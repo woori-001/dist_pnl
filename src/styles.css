@@ -277,3 +277,8 @@ button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius
   .logo-plate { padding: 0; flex: none; }
   .logo-plate img { max-width: 110px; }
 }
+/* 로고·제목 가운데 정렬 */
+.side .brand { align-items: center; text-align: center; }
+.side .logo-plate { justify-items: center; width: 100%; }
+.side .brand-title { padding: 0; }
+@media (max-width: 860px) { .side .brand { align-items: center; text-align: left; } }
