@@ -273,7 +273,7 @@ function renderSummary(summary, title, segStatus = blankSt()) {
     + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B)}</td><td class="n">${won(t.A)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
   const jj = detailSeg === '유통이관' ? '' : `<p class="muted small" style="margin:0">참고 · 자점운영비(전체정산 중 자점 협력점 지급분): ${won(t.JJ)}원</p>`;
   return `<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${kpi}</div>
-    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg} <span class="pill ${segStatus[detailSeg]}">${segStatus[detailSeg]}</span></h2><p>단위: 원 · 합계(상부−전체) = 매출 · 차감 항목은 −로 표시 · 왼쪽 구분을 누르면 표가 바뀌고, 타일의 가정산/확정으로 구분별 상태를 정해요</p></div></div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg} <span class="pill ${segStatus[detailSeg]}">${segStatus[detailSeg]}</span></h2></div><button type="button" class="small-btn js-snap" data-name="${esc(title)}_${detailSeg}">이미지 저장</button></div>
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
 function rerenderSummary(host) {
@@ -298,6 +298,36 @@ document.addEventListener('click', async e => {
   }
   detailSeg = seg; rerenderSummary(host);
 });
+// ---------- 이미지 저장 (구분 타일 + 결과표) ----------
+let h2cLoading = null;
+function loadH2C() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  return h2cLoading ||= new Promise((ok, no) => {
+    const sc = document.createElement('script');
+    sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    sc.onload = () => ok(window.html2canvas); sc.onerror = () => { h2cLoading = null; no(new Error('이미지 도구를 불러오지 못했어요')); };
+    document.head.appendChild(sc);
+  });
+}
+document.addEventListener('click', async e => {
+  const b = e.target.closest('.js-snap'); if (!b) return;
+  e.stopPropagation();
+  const target = b.closest('.sum-split'); if (!target) return;
+  b.disabled = true; const old = b.textContent; b.textContent = '만드는 중…';
+  try {
+    const h2c = await loadH2C();
+    document.body.classList.add('snapping');
+    const canvas = await h2c(target, { backgroundColor: getComputedStyle(document.body).backgroundColor, scale: 2, useCORS: true, logging: false });
+    const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `유통사업부_손익매출_${b.dataset.name.replace(/\s+/g, '')}.png`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    toast('이미지를 저장했어요');
+  } catch (err) { toast(err.message || '이미지 저장 실패'); }
+  finally { document.body.classList.remove('snapping'); b.disabled = false; b.textContent = old; }
+}, true);
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.kpi-btn[data-seg]')) { e.preventDefault(); e.target.click(); }
 });
