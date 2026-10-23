@@ -65,6 +65,7 @@ export function compute(parsed, period) {
   const map = new Map();
   const checks = { files: [], outOfPeriod: 0, otherDept: 0, formulaMismatch: 0, usedRows: 0, warnings: [] };
   const seen = new Set();
+  const kindFiles = {}; // 같은 정산종류가 여러 파일에서 계산되면 중복 가능성 경고
   for (const f of parsed) {
     const sumAll = f.rows.reduce((s, r) => s + r.amount, 0);
     const kinds = {}; f.rows.forEach(r => kinds[r.kind] = (kinds[r.kind] || 0) + 1);
@@ -72,7 +73,8 @@ export function compute(parsed, period) {
       fileTotal: f.fileTotal, sumAll, totalOk: f.fileTotal === null || f.fileTotal === sumAll });
     if (f.fileTotal !== null && f.fileTotal !== sumAll) checks.warnings.push(`${f.fileName}: 파일 합계(${f.fileTotal})와 행 합계(${sumAll})가 다릅니다`);
     for (const r of f.rows) {
-      const dateKey = r.kind === '환수' ? r.dueDate : r.openDate;
+      // 일반 = 개통일 기준, 추가·환수 = 정산예정일 기준 (RULES.openDateKinds)
+      const dateKey = RULES.openDateKinds.includes(r.kind) ? r.openDate : r.dueDate;
       if (!dateKey.startsWith(period)) { checks.outOfPeriod++; continue; }
       const calc = r.base - DEDUCT.reduce((s, k) => s + r.d[k], 0) + r.receipt + r.bundle + r.dongpan;
       if (calc !== r.amount) checks.formulaMismatch++;
@@ -88,10 +90,15 @@ export function compute(parsed, period) {
         cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0 }; map.set(key, l); }
       l.cnt++; l.amount += r.amount; l.gift_cash += gift.c; l.gift_goods += gift.g; l.gift_coupon += gift.k;
       checks.usedRows++;
+      const kf = f.side + '|' + r.kind; (kindFiles[kf] = kindFiles[kf] || new Set()).add(f.fileName);
     }
     const sk = f.side + JSON.stringify(kinds) + sumAll;
     if (seen.has(sk)) checks.warnings.push(`${f.fileName}: 같은 내용의 파일이 두 번 올라온 것 같습니다`);
     seen.add(sk);
+  }
+  for (const [k, set] of Object.entries(kindFiles)) if (set.size > 1) {
+    const [side, kind] = k.split('|');
+    checks.warnings.push(`${side}정산 '${kind}' 건이 파일 ${set.size}개에서 계산됐습니다 — 같은 건이 두 번 들어갔을 수 있어요 (${[...set].join(', ')})`);
   }
   const sides = new Set(parsed.map(f => f.side));
   for (const s of ['상부', '전체']) if (!sides.has(s)) checks.warnings.push(`${s}정산 파일이 없습니다`);

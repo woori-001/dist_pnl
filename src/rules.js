@@ -1,6 +1,6 @@
 // 계산 기준 — 기준이 바뀌면 이 파일만 고치면 됩니다.
 export const RULES = {
-  version: '2026-10-23',
+  version: '2026-10-23b',
 
   // 상부점 이름이 "숫자." 으로 시작하면 우리 코드점, 아니면 이관처
   codePattern: /^\s*\d+\./,
@@ -12,6 +12,9 @@ export const RULES = {
     { segment: 'SK매직',      match: 'SK매직' },
   ],
   transferSegment: '유통이관',
+
+  // 월 귀속: 여기 있는 정산종류는 개통일, 나머지(추가·환수 등)는 정산예정일이 대상월인 건
+  openDateKinds: ['일반'],
 
   // 협력점이 "숫자." 으로 시작하면 자점. 단 0.영업정산 같은 정산 입력용은 자점으로 보지 않음
   jajeomPattern: /^\s*\d+\./,

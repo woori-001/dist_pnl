@@ -1,6 +1,6 @@
 /* 어드민(workline.kr)에서 실행하는 "유통손익 가져오기" 즐겨찾기(북마클릿) 원본.
  * - 어드민에 로그인한 화면에서 즐겨찾기를 누르면 실행됩니다.
- * - 어드민의 '엑셀 다운로드'와 같은 기능으로 대상월 엑셀 6개(전체/상부 × 일반/추가/환수)를 만들어 받고,
+ * - 어드민의 '엑셀 다운로드'와 같은 기능으로 대상월 엑셀 6개(전체/상부 × 일반[개통일]/추가·환수[정산예정일])를 만들어 받고,
  *   계산기 창으로 넘깁니다. 파일은 브라우저 안에서만 오가고 어떤 서버에도 올리지 않습니다.
  * - 어드민 데이터는 읽기만 합니다 (수정·삭제 없음).
  * - 어드민 보안정책(CSP)상 외부 스크립트를 불러올 수 없어서 코드 전체가 즐겨찾기 안에 들어갑니다.
@@ -48,7 +48,7 @@
     const jobs = [];
     for (const [side, ep] of [['전체', '/api/exact/calc/export'], ['상부', '/api/exact/calc/upper/export']]) {
       jobs.push({ side, ep, label: `${side}정산 일반`, params: { chargeType: 'G', dateChk: '2', dateFrom: from, dateTo: to } });
-      jobs.push({ side, ep, label: `${side}정산 추가`, params: { chargeType: 'A', dateChk: '2', dateFrom: from, dateTo: to } });
+      jobs.push({ side, ep, label: `${side}정산 추가`, params: { chargeType: 'A', dateChk: '4', dateFrom: from, dateTo: to } });
       jobs.push({ side, ep, label: `${side}정산 환수`, params: { chargeType: 'B', dateChk: '4', dateFrom: from, dateTo: to } });
     }
     const files = [];
@@ -66,7 +66,7 @@
   box.setAttribute('style', 'position:fixed;top:16px;right:16px;z-index:2147483647;width:340px;background:#fff;color:#1d2229;border:1px solid #d0d5dc;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:16px;font:14px/1.5 system-ui,sans-serif');
   box.innerHTML = `<div style="font-weight:700;margin-bottom:8px">유통 손익매출 · 어드민에서 가져오기</div>
     <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px">대상월 <input type="month" value="${defYm}" style="flex:1;padding:6px;border:1px solid #d0d5dc;border-radius:6px"></label>
-    <div style="font-size:12px;color:#6b7380;margin-bottom:10px">전체·상부정산의 일반·추가(개통일)와 환수(정산예정일) 엑셀 6개를 만들어 계산기 창으로 넘깁니다. 1~2분 걸릴 수 있어요.</div>
+    <div style="font-size:12px;color:#6b7380;margin-bottom:10px">전체·상부정산의 일반(개통일)과 추가·환수(정산예정일) 엑셀 6개를 만들어 계산기 창으로 넘깁니다. 1~2분 걸릴 수 있어요.</div>
     <div data-msg style="font-size:12px;min-height:18px;margin-bottom:10px"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end">
       <button data-close style="padding:7px 12px;border:1px solid #d0d5dc;border-radius:8px;background:#fff;cursor:pointer">닫기</button>
