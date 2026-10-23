@@ -337,7 +337,7 @@ const fileTag = t => String(t).replace(/\s+/g, '').replace(/[\\/:*?"<>|()]/g, ''
 document.addEventListener('click', async e => {
   const b = e.target.closest('.js-snap'); if (!b) return;
   e.stopPropagation();
-  const target = b.closest('.sum-split'); if (!target) return;
+  const target = b.closest('.sum-panel'); if (!target) return;
   b.disabled = true; const old = b.textContent; b.textContent = '만드는 중…';
   try {
     downloadBlob(await captureSplit(target), `유통사업부_손익매출_${fileTag(b.dataset.name)}.png`);
@@ -347,7 +347,7 @@ document.addEventListener('click', async e => {
 }, true);
 /** 4개 구분 이미지를 한 번에 → ZIP 파일 하나로 저장 */
 async function snapAll(hostId, title, btn) {
-  const host = $(hostId); if (!host || !host.querySelector('.sum-split')) return;
+  const host = $(hostId); if (!host || !host.querySelector('.sum-panel')) return;
   const keep = detailSeg; const old = btn.textContent; btn.disabled = true;
   try {
     const JSZip = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', 'JSZip');
@@ -356,7 +356,7 @@ async function snapAll(hostId, title, btn) {
       btn.textContent = `만드는 중 ${i + 1}/${SEGMENTS.length}`;
       detailSeg = seg; rerenderSummary(host);
       await new Promise(r => requestAnimationFrame(() => setTimeout(r, 60)));
-      zip.file(`${i + 1}_${seg}.png`, await captureSplit(host.querySelector('.sum-split')));
+      zip.file(`${i + 1}_${seg}.png`, await captureSplit(host.querySelector('.sum-panel')));
     }
     downloadBlob(await zip.generateAsync({ type: 'blob' }), `유통사업부_손익매출_${fileTag(title)}_이미지.zip`);
     toast('4개 구분 이미지를 ZIP으로 저장했어요');

@@ -357,7 +357,9 @@ button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius
 /* 이미지 저장 중에는 버튼 숨김 */
 body.snapping .js-snap { visibility: hidden; }
 .sum-panel .panel-head { align-items: center; }
-body.snapping .sum-split { padding: 24px; background: var(--bg); border-radius: 0; }
+body.snapping .sum-split { align-items: start; }
+body.snapping .sum-panel { min-height: 0; }
+body.snapping .sum-panel h2 .pill { display: none; }
 body.snapping .sum-split * { letter-spacing: 0 !important; }
 .cmp-tbl thead th { white-space: nowrap; }
 body.snapping .stt button:not(.on) { display: none; }
