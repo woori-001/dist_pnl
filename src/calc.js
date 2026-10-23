@@ -5,6 +5,7 @@ const SIDE_BY_SHEET = { '상부정산관리': '상부', '전체정산관리': '�
 const NEED = ['정산종류', '협력점', '상부점', '상품명', '개통일', '정산예정일', '정산금액',
   '약정금액', '수납', '번들수수료', '동판수수료'];
 const DEDUCT = ['사은품', '물류', '쿠폰', '선납', '할인탭', '미비서류', '기타'];
+const OPTIONAL = ['접수일', '가입서비스', '상품옵션', '셋트유형'];
 
 const num = v => (v === null || v === undefined || v === '') ? 0 : Math.round(Number(String(v).replace(/,/g, '')) || 0);
 const str = v => (v === null || v === undefined) ? '' : String(v).trim();
@@ -40,6 +41,10 @@ export function parseWorkbook(XLSX, data, fileName) {
       openDate: str(a[idx['개통일']]).slice(0, 10), dueDate: str(a[idx['정산예정일']]).slice(0, 10),
       amount: num(a[idx['정산금액']]), base: num(a[idx['약정금액']]), receipt: num(a[idx['수납']]),
       bundle: num(a[idx['번들수수료']]), dongpan: num(a[idx['동판수수료']]), d,
+      recvDate: idx['접수일'] === undefined ? '' : str(a[idx['접수일']]).slice(0, 10),
+      svc: idx['가입서비스'] === undefined ? '' : str(a[idx['가입서비스']]),
+      opt: idx['상품옵션'] === undefined ? '' : str(a[idx['상품옵션']]),
+      set: idx['셋트유형'] === undefined ? '' : str(a[idx['셋트유형']]),
     });
   }
   return { fileName, side, rows, fileTotal };
@@ -53,6 +58,27 @@ export function segmentOf(upper) {
 }
 export function isJajeom(partner) {
   return RULES.jajeomPattern.test(partner) && !RULES.jajeomExceptPrefixes.some(p => partner.trim().startsWith(p));
+}
+/** 자점운영비 항목 판별 (첨부 '자점운영비(수동반영) 관리' 표 기준) */
+export function jajeomFeeCategory(row) {
+  const p = row.product || '';
+  const type = p.includes('_') ? p.slice(p.indexOf('_') + 1) : '';
+  if (type.startsWith('인터넷')) return row.set === '단독' ? '인터넷 단독' : '인터넷 번들';
+  if (p.startsWith('모바일')) {
+    const svc = row.svc || '';
+    const fam = (row.opt || '').includes('가족동판');
+    if (p.includes('SKYLIFE') && svc.includes('(유심)')) return '유심 상품 SKYLIFE';
+    if (svc.includes('(유심)')) return fam ? '유심 가족동판' : '유심';
+    if (svc.includes('(기기)')) return fam ? '기기 가족동판' : '기기';
+    if (svc.includes('(사전)')) return fam ? '사전예약 가족동판' : '사전예약';
+  }
+  return null;
+}
+export function jajeomFeeOf(row) {
+  const cat = jajeomFeeCategory(row); if (!cat) return 0;
+  const date = row.recvDate || row.openDate || '';
+  const hit = RULES.jajeomFees.filter(f => f.name === cat && f.from <= date).sort((a, b) => b.from.localeCompare(a.from))[0];
+  return hit ? hit.amount : 0;
 }
 function itemOf(row) {
   if (row.kind === '환수') return '환수';
@@ -88,8 +114,13 @@ export function compute(parsed, period) {
       const key = [seg, r.upper, f.side, item, jj ? '자점' : '외부', included].join('|');
       let l = map.get(key);
       if (!l) { l = { segment: seg, upper_name: r.upper, side: f.side, item, partner_type: jj ? '자점' : '외부', included,
-        cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0 }; map.set(key, l); }
+        cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0, jj_fee: 0 }; map.set(key, l); }
       l.cnt++; l.amount += r.amount; l.gift_cash += gift.c; l.gift_goods += gift.g; l.gift_coupon += gift.k;
+      // 자점운영비: 코드 · 전체정산 · 자점(유통·영업정산 제외) · 일반 건
+      if (seg !== RULES.transferSegment && f.side === '전체' && jj && r.kind === '일반'
+          && !RULES.jajeomFeeExcludePrefixes.some(p => r.partner.trim().startsWith(p))) {
+        const fee = jajeomFeeOf(r); l.jj_fee += fee; if (fee) checks.jajeomFeeRows = (checks.jajeomFeeRows || 0) + 1;
+      }
       checks.usedRows++;
       const kf = f.side + '|' + r.kind + '|' + (f.db || ''); (kindFiles[kf] = kindFiles[kf] || new Set()).add(f.fileName);
     }
@@ -117,6 +148,7 @@ export function summarize(lines) {
     if (!l.included) continue;
     const t = seg[l.segment]; if (!t) continue;
     const gifts = l.gift_cash + l.gift_goods + l.gift_coupon;
+    t.JF += l.jj_fee || 0;
     if (l.side === '전체') {
       if (l.item === '환수') t.D_F += -l.amount;
       else {
@@ -139,13 +171,13 @@ export function summarize(lines) {
     t.B = (t.U_A + t.U_A1 + t.U_A2) - (t.U_B + t.U_C + t.U_D + t.U_F);
     t.BA = t.B - t.A;
     t.GIFT = t.D_B + t.D_C + t.D_D;
-    t.REV = t.BA; // 매출 = 상부 최종(B) − 전체 최종(A). 사은품은 A에서 이미 차감되어 있음
+    t.REV = t.BA - t.JF; // 매출 = 상부 최종(B) − 자점운영비 − 전체 최종(A). 사은품은 A에서 이미 차감
     total.REV += t.REV;
   }
   return { segments: seg, total };
 }
 function blank() {
-  return { D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
+  return { JF: 0, D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
 }
 
 /** 상부점별 내역 (점검용) */
@@ -154,10 +186,11 @@ export function byUpper(lines) {
   for (const l of lines) {
     if (!l.included) continue;
     const k = l.segment + '|' + l.upper_name;
-    let r = m.get(k); if (!r) { r = { segment: l.segment, upper_name: l.upper_name, B: 0, A: 0, GIFT: 0, cntUp: 0, cntDn: 0 }; m.set(k, r); }
+    let r = m.get(k); if (!r) { r = { segment: l.segment, upper_name: l.upper_name, B: 0, A: 0, GIFT: 0, JF: 0, cntUp: 0, cntDn: 0 }; m.set(k, r); }
+    r.JF += l.jj_fee || 0;
     if (l.side === '상부') { r.B += l.amount; r.cntUp += l.cnt; }
     else { r.A += l.amount; r.cntDn += l.cnt; r.GIFT += l.gift_cash + l.gift_goods + l.gift_coupon; }
   }
-  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A }))
+  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A - r.JF }))
     .sort((a, b) => SEGMENTS.indexOf(a.segment) - SEGMENTS.indexOf(b.segment) || b.REV - a.REV);
 }

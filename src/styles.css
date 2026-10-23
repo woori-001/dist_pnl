@@ -362,3 +362,4 @@ body.snapping .sum-split * { letter-spacing: 0 !important; }
 .cmp-tbl thead th { white-space: nowrap; }
 body.snapping .stt button:not(.on) { display: none; }
 body.snapping .stt { background: transparent; }
+.rules .c6 { --c: #f9a8d4; }
