@@ -63,7 +63,9 @@ export function isJajeom(partner) {
 export function jajeomFeeCategory(row) {
   const p = row.product || '';
   const type = p.includes('_') ? p.slice(p.indexOf('_') + 1) : '';
-  if (type.startsWith('인터넷')) return row.set === '단독' ? '인터넷 단독' : '인터넷 번들';
+  // 인터넷: 상품유형이 '인터넷'으로 시작 (SK-biz 인터넷처럼 앞에 구분 표시가 붙은 것도 포함, 인터넷전화 제외)
+  const netType = type.replace(/^\([^)]*\)/, '');
+  if (netType.startsWith('인터넷') && !netType.startsWith('인터넷전화')) return (row.set || '').startsWith('단독') ? '인터넷 단독' : '인터넷 번들';
   if (p.startsWith('모바일')) {
     const svc = row.svc || '';
     const fam = (row.opt || '').includes('가족동판');
