@@ -90,7 +90,7 @@ $('btnClear').onclick = () => { state.files = []; state.result = null; renderFil
 function compactUpload(on, info = {}) {
   $('uploadCard').classList.toggle('compact', on);
   $('uploadBody').hidden = on;
-  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on; $('btnSave').hidden = !on; $('btnExportCalc').hidden = !on;
+  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on; $('btnSave').hidden = !on; $('btnExportCalc').hidden = !on; $('btnSnapAllCalc').hidden = !on;
   $('btnToggleFiles').textContent = '파일 목록 보기';
   $('uploadTitle').textContent = on ? `${monthLabel($('period').value)} · 계산에 쓴 파일 ${state.files.length}개` : '엑셀로 계산하기';
   $('uploadSub').innerHTML = on ? info.html : '어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.';
@@ -311,25 +311,59 @@ function loadH2C() {
     document.head.appendChild(sc);
   });
 }
+function loadScript(src, globalName) {
+  if (window[globalName]) return Promise.resolve(window[globalName]);
+  return new Promise((ok, no) => {
+    const sc = document.createElement('script'); sc.src = src;
+    sc.onload = () => ok(window[globalName]); sc.onerror = () => no(new Error('도구를 불러오지 못했어요'));
+    document.head.appendChild(sc);
+  });
+}
+async function captureSplit(el) {
+  const h2c = await loadH2C();
+  document.body.classList.add('snapping');
+  try {
+    const canvas = await h2c(el, { backgroundColor: getComputedStyle(document.body).backgroundColor, scale: 2, useCORS: true, logging: false });
+    return await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+  } finally { document.body.classList.remove('snapping'); }
+}
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+const fileTag = t => String(t).replace(/\s+/g, '').replace(/[\\/:*?"<>|()]/g, '');
 document.addEventListener('click', async e => {
   const b = e.target.closest('.js-snap'); if (!b) return;
   e.stopPropagation();
   const target = b.closest('.sum-split'); if (!target) return;
   b.disabled = true; const old = b.textContent; b.textContent = '만드는 중…';
   try {
-    const h2c = await loadH2C();
-    document.body.classList.add('snapping');
-    const canvas = await h2c(target, { backgroundColor: getComputedStyle(document.body).backgroundColor, scale: 2, useCORS: true, logging: false });
-    const blob = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `유통사업부_손익매출_${b.dataset.name.replace(/\s+/g, '')}.png`;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    downloadBlob(await captureSplit(target), `유통사업부_손익매출_${fileTag(b.dataset.name)}.png`);
     toast('이미지를 저장했어요');
   } catch (err) { toast(err.message || '이미지 저장 실패'); }
-  finally { document.body.classList.remove('snapping'); b.disabled = false; b.textContent = old; }
+  finally { b.disabled = false; b.textContent = old; }
 }, true);
+/** 4개 구분 이미지를 한 번에 → ZIP 파일 하나로 저장 */
+async function snapAll(hostId, title, btn) {
+  const host = $(hostId); if (!host || !host.querySelector('.sum-split')) return;
+  const keep = detailSeg; const old = btn.textContent; btn.disabled = true;
+  try {
+    const JSZip = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', 'JSZip');
+    const zip = new JSZip();
+    for (const [i, seg] of SEGMENTS.entries()) {
+      btn.textContent = `만드는 중 ${i + 1}/${SEGMENTS.length}`;
+      detailSeg = seg; rerenderSummary(host);
+      await new Promise(r => requestAnimationFrame(() => setTimeout(r, 60)));
+      zip.file(`${i + 1}_${seg}.png`, await captureSplit(host.querySelector('.sum-split')));
+    }
+    downloadBlob(await zip.generateAsync({ type: 'blob' }), `유통사업부_손익매출_${fileTag(title)}_이미지.zip`);
+    toast('4개 구분 이미지를 ZIP으로 저장했어요');
+  } catch (err) { toast(err.message || '이미지 저장 실패'); }
+  finally { detailSeg = keep; rerenderSummary(host); btn.disabled = false; btn.textContent = old; }
+}
+$('btnSnapAllCalc').onclick = () => { const r = state.result; if (r) snapAll('calcSummary', monthLabel(r.period), $('btnSnapAllCalc')); };
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.kpi-btn[data-seg]')) { e.preventDefault(); e.target.click(); }
 });
@@ -396,7 +430,7 @@ async function renderDetail() {
     ${SEGMENTS.map(k => `<td class="n">${won(revOf(r, k))} <span class="sdot ${segSt(r, k)}" title="${segSt(r, k)}"></span></td>`).join('')}<td class="small">${esc(r.note || '')}</td></tr>`).join('');
   $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)} 회차</h2><p>회차를 누르면 그 회차 숫자로 바뀌어요 · 구분별 가정산/확정은 아래 타일에서 바꿔요</p></div>
       <div class="row gap wrap">
-        <button id="btnExportRun">엑셀 다운로드</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
+        <button id="btnExportRun">엑셀 다운로드</button><button id="btnSnapAllRun">이미지 일괄저장</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
       <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${SEGMENTS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
       <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
     </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
@@ -415,6 +449,7 @@ async function renderDetail() {
   state.detail = { summary, lines, title: monthLabel(p), segStatus, runId: run.id, period: p };
   $('runBody').innerHTML = renderSummary(summary, state.detail.title, segStatus) + renderUpper(byUpper(lines));
   $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, segStatus);
+  $('btnSnapAllRun').onclick = () => snapAll('runBody', monthLabel(p), $('btnSnapAllRun'));
 }
 
 // ---------- 엑셀 내보내기 ----------
