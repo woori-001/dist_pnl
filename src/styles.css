@@ -282,3 +282,26 @@ button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius
 .side .logo-plate { justify-items: center; width: 100%; }
 .side .brand-title { padding: 0; }
 @media (max-width: 860px) { .side .brand { align-items: center; text-align: left; } }
+
+/* ---------- 구분별 비교표 (상부 / 전체 / 상부−전체) ---------- */
+.kpi-btn { all: unset; box-sizing: border-box; cursor: pointer; background: var(--blue); color: #fff; border-radius: 16px; padding: 18px 16px 16px; display: grid; gap: 6px; align-content: start; min-height: 128px; min-width: 0; overflow: hidden; transition: transform .08s, filter .15s; }
+.kpi-btn:hover { filter: brightness(1.05); }
+.kpi-btn:focus-visible { outline: 3px solid #9db8ff; outline-offset: 2px; }
+.kpi-btn.hot { background: var(--orange); box-shadow: 0 10px 24px rgba(247,115,27,.25); }
+.segtabs { display: inline-flex; background: var(--bg); border-radius: 10px; padding: 3px; flex-wrap: wrap; }
+.segtab { height: 32px; padding: 0 12px; border: 0; background: transparent; border-radius: 8px; font-size: 13px; font-weight: 700; color: var(--muted); gap: 6px; }
+.segtab i { width: 7px; height: 7px; border-radius: 50%; }
+.segtab.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(20,26,38,.1); }
+.segtab:hover:not(.on) { box-shadow: none; color: var(--ink); }
+.cmp-tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.cmp-tbl thead th { background: var(--side); color: #fff; font-weight: 700; font-size: 13px; padding: 12px 18px; text-align: center; }
+.cmp-tbl thead th.n { text-align: right; }
+.cmp-tbl td, .cmp-tbl tbody th { padding: 11px 18px; border-bottom: 1px solid var(--line); }
+.cmp-tbl th.grp { background: var(--head); font-weight: 700; color: var(--ink); text-align: center; width: 92px; border-right: 1px solid var(--line); }
+.cmp-tbl td.item { color: var(--muted); font-weight: 600; width: 110px; }
+.cmp-tbl td.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cmp-tbl td.diff { background: #fbfcfe; font-weight: 700; }
+.cmp-tbl tr.total th, .cmp-tbl tr.total td { background: var(--soft); font-weight: 800; border-bottom: 0; font-size: 15px; color: var(--ink); }
+.cmp-tbl tr.total td.rev { background: #fff3c4; color: var(--ink); }
+.cmp-tbl tr.total td.rev .neg { color: var(--neg); }
+@media (max-width: 860px) { .cmp-tbl td, .cmp-tbl tbody th, .cmp-tbl thead th { padding: 9px 10px; } .cmp-tbl th.grp { width: auto; } }

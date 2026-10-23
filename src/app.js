@@ -247,37 +247,35 @@ const LINES = [ // 엑셀 내보내기용 (전체 항목)
   ['ref', '참고: 자점운영비 (A 중 자점 지급분)', 'JJ', 1, 'code'],
 ];
 const SEG_NOTE = { '유통이관': '이관처 · 자점 제외', 'SKB웨이브넷': '코드 · 자점 포함', 'SKY우리정보': '코드 · 자점 포함', 'SK매직': '코드 · 자점 포함' };
-let detailOpen = false;
+let detailSeg = '유통이관';
 function renderSummary(summary, title) {
   const s = summary.segments;
   const kv = v => `${Math.round(v || 0).toLocaleString('ko-KR')}<small>원</small>`;
-  const kpi = SEGMENTS.map(k => `<div class="kpi${k === '유통이관' ? ' hot' : ''}"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
-      <div class="kpi-note">${SEG_NOTE[k]}</div></div>`).join('');
-  const cell = (k, v) => `<td class="n">${won(v)}</td>`;
-  const row = (cls, label, key, sign = 1, onlyCode = false) =>
-    `<tr class="${cls}"><td class="lab">${label}</td>${SEGMENTS.map(k => (onlyCode && k === '유통이관') ? '<td class="n">·</td>' : cell(k, sign * s[k][key])).join('')}</tr>`;
-  const subs = (rows) => rows.map(([l, k]) => row('sub', l, k)).join('');
-  const margin = `<tr class="margin"><td class="lab">받은 돈 대비</td>${SEGMENTS.map(k => `<td class="n">${s[k].B > 0 ? (s[k].REV / s[k].B * 100).toFixed(1) + '%' : '-'}</td>`).join('')}</tr>`;
-  const body = [
-    row('mrow plus', '받은 돈 <small>상부정산 최종 B</small>', 'B'),
-    detailOpen ? subs([['수수료', 'U_A'], ['관리수수료', 'U_A1'], ['정산관련', 'U_A2'], ['환수 (−)', 'U_F']]) : '',
-    row('mrow minus', '준 돈 <small>전체정산 최종 A (사은품 차감 후)</small>', 'A'),
-    detailOpen ? subs([['수수료 (사은품 차감전)', 'D_A'], ['사은품 현금 (−)', 'D_B'], ['사은품 물류 (−)', 'D_C'], ['사은품 쿠폰 (−)', 'D_D'], ['환수 (−)', 'D_F']]) : '',
-    row('result', '매출', 'REV'),
-    margin,
-    row('ref', '참고 · 자점운영비 (준 돈 중 자점 지급분)', 'JJ', 1, true),
-  ].join('');
-  const head = `<thead><tr><th>항목<button class="xbtn js-detail">${detailOpen ? '세부 접기 ▴' : '세부 펼치기 ▾'}</button></th>${SEGMENTS.map(k => `<th><span class="dot" style="background:${SEG_COLOR[k]}"></span>${k}</th>`).join('')}</tr></thead>`;
+  const kpi = SEGMENTS.map(k => `<button class="kpi kpi-btn${k === detailSeg ? ' hot' : ''}" data-seg="${k}"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
+      <div class="kpi-note">${SEG_NOTE[k]}</div></button>`).join('');
+  const t = s[detailSeg];
+  // 상부·전체를 같은 항목으로 나란히 (차감 항목은 −로 표시)
+  const rows = [
+    ['수수료', '일반', t.U_A, t.D_A0], ['', '관리', t.U_A1, t.D_A1], ['', '정산관련', t.U_A2, t.D_A2],
+    ['사은품', '현금', -t.U_B, -t.D_B], ['', '물류', -t.U_C, -t.D_C], ['', '쿠폰', -t.U_D, -t.D_D],
+  ];
+  const grpSpan = { '수수료': 3, '사은품': 3 };
+  const body = rows.map(([g, item, up, dn]) => `<tr>${g ? `<th class="grp" rowspan="${grpSpan[g]}">${g}</th>` : ''}<td class="item">${item}</td>
+      <td class="n">${won(up)}</td><td class="n">${won(dn)}</td><td class="n diff">${won(up - dn)}</td></tr>`).join('')
+    + `<tr><th class="grp" colspan="2">환수</th><td class="n">${won(-t.U_F)}</td><td class="n">${won(-t.D_F)}</td><td class="n diff">${won(-t.U_F + t.D_F)}</td></tr>`
+    + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B)}</td><td class="n">${won(t.A)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
+  const segTabs = SEGMENTS.map(k => `<button class="segtab${k === detailSeg ? ' on' : ''}" data-seg="${k}"><i style="background:${SEG_COLOR[k]}"></i>${k}</button>`).join('');
+  const jj = detailSeg === '유통이관' ? '' : `<p class="muted small" style="margin:0">참고 · 자점운영비(전체정산 중 자점 협력점 지급분): ${won(t.JJ)}원</p>`;
   return `<div class="kpis">${kpi}</div>
-    <div class="panel"><div class="panel-head"><div><h2>${esc(title)} 구분별 상세</h2><p>단위: 원 · 받은 돈(B) − 준 돈(A) = 매출 · 사은품은 준 돈에서 이미 차감</p></div></div>
-    <div class="tbl-wrap"><table class="detail-tbl">${head}<tbody>${body}</tbody></table></div></div>`;
+    <div class="panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg}</h2><p>단위: 원 · 합계(상부−전체) = 매출 · 차감 항목은 −로 표시</p></div><div class="segtabs">${segTabs}</div></div>
+    <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div>`;
 }
 document.addEventListener('click', e => {
-  if (!e.target.classList || !e.target.classList.contains("js-detail")) return;
-  detailOpen = !detailOpen;
-  const host = e.target.closest('#calcSummary, #runBody');
-  if (host && host.id === 'calcSummary' && state.result) host.innerHTML = renderSummary(state.result.summary, monthLabel(state.result.period));
-  else if (host && host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title) + renderUpper(byUpper(state.detail.lines));
+  const b = e.target.closest('[data-seg]'); if (!b) return;
+  const host = b.closest('#calcSummary, #runBody'); if (!host) return;
+  detailSeg = b.dataset.seg;
+  if (host.id === 'calcSummary' && state.result) host.innerHTML = renderSummary(state.result.summary, monthLabel(state.result.period));
+  else if (host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title) + renderUpper(byUpper(state.detail.lines));
 });
 function renderUpper(rows) {
   const tr = rows.map(r => `<tr><td>${r.segment}</td><td>${esc(r.upper_name)}</td><td class="n">${r.cntUp.toLocaleString()}</td><td class="n">${won(r.B)}</td>

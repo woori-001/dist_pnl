@@ -119,7 +119,10 @@ export function summarize(lines) {
     const gifts = l.gift_cash + l.gift_goods + l.gift_coupon;
     if (l.side === '전체') {
       if (l.item === '환수') t.D_F += -l.amount;
-      else { t.D_A += l.amount + gifts; t.D_B += l.gift_cash; t.D_C += l.gift_goods; t.D_D += l.gift_coupon; }
+      else {
+        const k = l.item === '관리수수료' ? 'D_A1' : l.item === '정산관련' ? 'D_A2' : 'D_A0';
+        t[k] += l.amount + gifts; t.D_A += l.amount + gifts; t.D_B += l.gift_cash; t.D_C += l.gift_goods; t.D_D += l.gift_coupon;
+      }
       if (l.partner_type === '자점') t.JJ += l.amount;
     } else {
       if (l.item === '환수') t.U_F += -l.amount;
@@ -142,7 +145,7 @@ export function summarize(lines) {
   return { segments: seg, total };
 }
 function blank() {
-  return { D_A: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
+  return { D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
 }
 
 /** 상부점별 내역 (점검용) */
