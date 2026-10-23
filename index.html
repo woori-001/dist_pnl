@@ -31,7 +31,7 @@
     </div>
 
     <details class="rulecard" id="ruleCard" open hidden>
-      <summary><span class="ri">i</span>계산 기준</summary>
+      <summary><i class="ri">i</i>계산 기준</summary>
       <ul class="rules">
         <li class="c1"><b>유통이관</b><span>이관처 상부 건 · 자점 협력점 제외</span></li>
         <li class="c2"><b>코드매출</b><span>SKB웨이브넷 · SKY우리정보 · SK매직<br>자점 협력점 포함</span></li>
@@ -126,15 +126,12 @@
       <!-- 월별 내역 -->
       <div class="pane stack-lg" id="pane-history" hidden>
         <div class="panel">
-          <div class="panel-head">
-            <div><h2>월별 매출 달력</h2><p>달을 누르면 그 달 내역이 열려요 · 확정이 있으면 확정, 없으면 최근 가정산 기준</p></div>
-            <div class="row gap">
-              <div class="yearnav"><button id="yPrev" aria-label="이전 해">‹</button><b id="yLabel">2026년</b><button id="yNext" aria-label="다음 해">›</button></div>
-              <button id="btnReload" class="small-btn">새로고침</button>
-            </div>
+          <div class="yearbar">
+            <div class="yearbig"><button id="yPrev" aria-label="이전 해">‹</button><b id="yLabel">2026</b><button id="yNext" aria-label="다음 해">›</button></div>
+            <div class="ystat" id="yStat"></div>
           </div>
           <div class="cal" id="calGrid"></div>
-          <div class="cal-legend"><span class="lg 확정">확정</span><span class="lg 가정산">가정산</span><span class="lg none">기록 없음</span></div>
+          <p class="muted small" style="margin:0">달을 누르면 아래에 그 달 내역이 열려요. 칸의 숫자는 유통이관 매출(만원)이고, 마우스를 올리면 4개 구분이 모두 보여요. 확정이 있으면 확정, 없으면 최근 가정산 기준이에요.</p>
         </div>
         <div id="monthDetail" class="stack-lg"></div>
       </div>

@@ -290,7 +290,6 @@ function renderUpper(rows) {
 }
 
 // ---------- 월별 내역 ----------
-$('btnReload').onclick = () => loadRuns();
 async function loadRuns() {
   const { data, error } = await sb.from('dist_pnl_runs')
     .select('id, period, status, note, files, summary, rules, created_by, created_at, confirmed_by, confirmed_at')
@@ -302,22 +301,28 @@ function repRun(period) {
   const list = state.runs.filter(r => ym(r.period) === period);
   return list.find(r => r.status === '확정') || list[0];
 }
+const man = v => { const n = Math.round((v || 0) / 1e4); return `${n.toLocaleString('ko-KR')}<small>만</small>`; };
 function renderMonths() {
   const y = state.year;
-  $('yLabel').textContent = `${y}년`;
+  $('yLabel').textContent = `${y}`;
   const now = new Date(), nowKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const cells = [];
+  const cells = []; let nC = 0, nP = 0;
   for (let m = 1; m <= 12; m++) {
     const p = `${y}-${String(m).padStart(2, '0')}`;
-    const r = repRun(p), n = state.runs.filter(x => ym(x.period) === p).length;
-    const cls = ['mcell', r ? '' : 'empty', state.selPeriod === p ? 'sel' : '', p === nowKey ? 'now' : ''].join(' ');
-    const inner = r
-      ? `<div class="mhead"><span class="mname">${m}월</span><span class="pill ${r.status}">${r.status}${n > 1 ? ` · ${n}회` : ''}</span></div>
-         <div class="mlines">${SEGMENTS.map(k => `<div class="mline"><span><i style="background:${SEG_COLOR[k]}"></i>${k}</span><b>${won(r.summary.segments[k].REV)}</b></div>`).join('')}</div>`
-      : `<div class="mhead"><span class="mname">${m}월</span></div><div class="mempty">기록 없음</div>`;
-    cells.push(`<button class="${cls}" data-p="${p}">${inner}</button>`);
+    const r = repRun(p);
+    if (r) r.status === '확정' ? nC++ : nP++;
+    const cls = ['mcell', r ? '' : 'empty', state.selPeriod === p ? 'sel' : '', p === nowKey ? 'now' : ''].filter(Boolean).join(' ');
+    const tip = r ? SEGMENTS.map(k => `${k} ${Math.round(r.summary.segments[k].REV).toLocaleString('ko-KR')}원`).join('\n') : '기록 없음';
+    const rev = r ? r.summary.segments['유통이관'].REV : 0;
+    cells.push(`<button class="${cls}" data-p="${p}" title="${esc(`${m}월${r ? ' · ' + r.status : ''}\n${tip}`)}">
+      ${r ? `<span class="mstat ${r.status}"></span>` : ''}
+      <span class="mnum">${m}<small>월</small></span>
+      <span class="mcap">${r ? r.status : (p === nowKey ? '이번 달' : '기록 없음')}</span>
+      ${r ? `<span class="mval${rev < 0 ? ' neg' : ''}">${man(rev)}</span><span class="mcap">유통이관 매출</span>` : ''}
+    </button>`);
   }
   $('calGrid').innerHTML = cells.join('');
+  $('yStat').innerHTML = `<span><i style="background:var(--ok)"></i>확정 ${nC}개월</span><span><i style="background:#f59e0b"></i>가정산 ${nP}개월</span>`;
   $('calGrid').querySelectorAll('.mcell').forEach(b => b.onclick = () => { state.selPeriod = b.dataset.p; state.selRun = null; state.scrollDetail = true; renderMonths(); });
   if (state.selPeriod && state.selPeriod.startsWith(String(y))) renderDetail(); else $('monthDetail').innerHTML = '';
 }
