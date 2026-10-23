@@ -1,6 +1,6 @@
 // 계산 기준 — 기준이 바뀌면 이 파일만 고치면 됩니다.
 export const RULES = {
-  version: '2026-10-23b',
+  version: '2026-10-23c',
 
   // 상부점 이름이 "숫자." 으로 시작하면 우리 코드점, 아니면 이관처
   codePattern: /^\s*\d+\./,
@@ -12,6 +12,8 @@ export const RULES = {
     { segment: 'SK매직',      match: 'SK매직' },
   ],
   transferSegment: '유통이관',
+  // 숫자로 시작하지만 유통이관으로 보는 상부점 (0.기타)
+  transferCodePrefixes: ['0.'],
 
   // 월 귀속: 여기 있는 정산종류는 개통일, 나머지(추가·환수 등)는 정산예정일이 대상월인 건
   openDateKinds: ['일반'],

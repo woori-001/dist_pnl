@@ -47,6 +47,7 @@ export function parseWorkbook(XLSX, data, fileName) {
 
 export function segmentOf(upper) {
   if (!RULES.codePattern.test(upper)) return RULES.transferSegment;
+  if (RULES.transferCodePrefixes.some(p => upper.trim().startsWith(p))) return RULES.transferSegment;
   const hit = RULES.codeSegments.find(c => upper.includes(c.match));
   return hit ? hit.segment : null; // null = 타부서 코드
 }
