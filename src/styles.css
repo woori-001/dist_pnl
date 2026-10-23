@@ -331,3 +331,4 @@ button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius
 /* 넓은 화면에서 본문이 끝까지 늘어나지 않게 */
 .main > * { width: 100%; max-width: 1120px; }
 .cmp-tbl td.n, .cmp-tbl thead th.n { width: 21%; }
+.cmp-tbl td.item { background: var(--head); border-right: 1px solid var(--line); color: var(--ink); }
