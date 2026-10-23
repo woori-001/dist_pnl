@@ -90,7 +90,7 @@ $('btnClear').onclick = () => { state.files = []; state.result = null; renderFil
 function compactUpload(on, info = {}) {
   $('uploadCard').classList.toggle('compact', on);
   $('uploadBody').hidden = on;
-  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on;
+  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on; $('btnSave').hidden = !on; $('btnExportCalc').hidden = !on;
   $('btnToggleFiles').textContent = '파일 목록 보기';
   $('uploadTitle').textContent = on ? `${monthLabel($('period').value)} · 계산에 쓴 파일 ${state.files.length}개` : '엑셀로 계산하기';
   $('uploadSub').innerHTML = on ? info.html : '어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.';
@@ -215,7 +215,7 @@ $('btnCalc').onclick = () => {
   compactUpload(true, { html: `${warn.length ? '' : '<span class="okline">✓ 점검 통과</span> · '}${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치 있음</b>'} · 계산에 쓴 행 ${checks.usedRows.toLocaleString()}건 · 타부서 코드 ${checks.otherDept.toLocaleString()}건 제외` });
   $('calcSummary').innerHTML = renderSummary(summary, monthLabel(period), state.segStatus);
   $('calcUpper').innerHTML = renderUpper(byUpper(lines));
-  $('calcResult').hidden = false; $('saveMsg').textContent = '';
+  $('calcResult').hidden = false; $('btnSave').textContent = '이 달 결과 저장';
 };
 
 $('btnSave').onclick = async () => {
@@ -225,15 +225,16 @@ $('btnSave').onclick = async () => {
   const existing = state.runs.filter(x => ym(x.period) === r.period);
   const clash = SEGMENTS.filter(k => st[k] === '확정' && existing.some(x => segSt(x, k) === '확정'));
   if (clash.length && !await ask(`${monthLabel(r.period)} ${clash.join(', ')}은(는) 이미 확정된 회차가 있어요. 이번 계산을 확정으로 저장하면 이전 확정은 가정산으로 바뀌어요. 계속할까요?`)) return;
-  $('btnSave').disabled = true; $('saveMsg').textContent = '저장 중…';
+  $('btnSave').disabled = true; $('btnSave').textContent = '저장 중…';
   const files = state.files.map(f => ({ name: f.fileName, side: f.side, rows: f.rows.length, total: f.fileTotal }));
   const rules = { version: RULES.version, checks: { usedRows: r.checks.usedRows, outOfPeriod: r.checks.outOfPeriod, otherDept: r.checks.otherDept, warnings: r.checks.warnings } };
-  const { error } = await sb.rpc('dist_pnl_save_run2', { p_period: periodDate, p_seg_status: st, p_note: $('note').value.trim() || null,
+  const { error } = await sb.rpc('dist_pnl_save_run2', { p_period: periodDate, p_seg_status: st, p_note: null,
     p_files: files, p_summary: r.summary, p_rules: rules, p_lines: r.lines });
   $('btnSave').disabled = false;
-  if (error) { $('saveMsg').innerHTML = `<span class="err">저장 실패: ${esc(error.message)}</span>`; return; }
-  $('saveMsg').innerHTML = `${monthLabel(r.period)} 저장 완료 · ${SEGMENTS.map(k => `${k} <span class="pill ${st[k]}">${st[k]}</span>`).join(' ')} — 월별 내역에서 볼 수 있어요`;
-  toast('저장했습니다'); loadRuns();
+  if (error) { $('btnSave').textContent = '이 달 결과 저장'; toast('저장 실패: ' + error.message); return; }
+  $('btnSave').textContent = '✓ 저장됨';
+  const nConf = SEGMENTS.filter(k => st[k] === '확정').length;
+  toast(`${monthLabel(r.period)} 저장 완료 · ${nConf === 4 ? '전체 확정' : nConf ? `확정 ${nConf}/4` : '가정산'} — 월별 내역에서 볼 수 있어요`); loadRuns();
 };
 $('btnExportCalc').onclick = () => { const r = state.result; if (r) exportXlsx(r.period, r.summary, r.lines, state.segStatus); };
 
@@ -286,7 +287,7 @@ document.addEventListener('click', async e => {
   const stBtn = e.target.closest('[data-st]');
   if (stBtn) {
     const to = stBtn.dataset.st;
-    if (host.id === 'calcSummary') { state.segStatus[seg] = to; detailSeg = seg; rerenderSummary(host); return; }
+    if (host.id === 'calcSummary') { state.segStatus[seg] = to; detailSeg = seg; rerenderSummary(host); $('btnSave').textContent = '이 달 결과 저장'; return; }
     // 저장된 회차: 바로 DB에 반영
     const d = state.detail; if (!d || d.segStatus[seg] === to) return;
     const others = state.runs.filter(r => ym(r.period) === d.period && r.id !== d.runId && segSt(r, seg) === '확정');
