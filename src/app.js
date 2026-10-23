@@ -7,7 +7,8 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 const XLSX = window.XLSX;
 
-const state = { files: [], result: null, runs: [], selPeriod: null, selRun: null };
+const state = { files: [], result: null, runs: [], selPeriod: null, selRun: null, year: new Date().getFullYear() };
+const SEG_COLOR = { '유통이관': '#3d6ef2', 'SKB웨이브넷': '#8b5cf6', 'SKY우리정보': '#06b6d4', 'SK매직': '#f59e0b' };
 
 // ---------- 공통 ----------
 const won = v => {
@@ -29,13 +30,13 @@ function show(view) {
   for (const v of ['viewLogin', 'viewDenied', 'viewApp']) $(v).hidden = v !== view;
   $('nav').hidden = view !== 'viewApp';
   $('bmCard').hidden = view !== 'viewApp' || location.hash.includes('admin-import');
+  $('ruleCard').hidden = view !== 'viewApp';
   if (view === 'viewLogin') setTitle('유통 손익매출 계산기', '로그인하면 계산·저장할 수 있어요');
   if (view === 'viewApp') setTitle(...PAGE[currentTab]);
 }
 const PAGE = {
   calc: ['손익매출 계산하기', '어드민 가져오기 버튼이나 엑셀로 대상월 매출을 계산해요 · 매출 = 상부(B) − 전체(A) − 직접지급사은품'],
-  history: ['월별 내역', '저장한 가정산·확정 회차를 월별로 모아 봐요'],
-  rules: ['계산 기준', '대상 상부점·협력점, 월 귀속, 항목 구분과 산식'],
+  history: ['월별 내역', '달력에서 달을 누르면 그 달의 가정산·확정 내역이 열려요'],
 };
 let currentTab = 'calc';
 function setTitle(t, sub) { $('pageTitle').textContent = t; $('pageSub').textContent = sub; }
@@ -83,6 +84,16 @@ drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
 $('fileInput').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
 $('btnClear').onclick = () => { state.files = []; state.result = null; renderFiles(); $('calcResult').hidden = true; };
+function compactUpload(on, info = {}) {
+  $('uploadCard').classList.toggle('compact', on);
+  $('uploadBody').hidden = on;
+  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on;
+  $('btnToggleFiles').textContent = '파일 목록 보기';
+  $('uploadTitle').textContent = on ? `${monthLabel($('period').value)} · 계산에 쓴 파일 ${state.files.length}개` : '엑셀로 계산하기';
+  $('uploadSub').innerHTML = on ? info.html : '어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.';
+}
+$('btnToggleFiles').onclick = () => { const open = $('uploadBody').hidden; $('uploadBody').hidden = !open; $('btnToggleFiles').textContent = open ? '파일 목록 접기' : '파일 목록 보기'; };
+$('btnNew').onclick = () => { state.files = []; state.result = null; renderFiles(); $('calcResult').hidden = true; compactUpload(false); };
 
 async function addFiles(fileList) {
   const list = [...fileList]; // FileList는 input 초기화 시 비워지므로 먼저 복사
@@ -93,7 +104,7 @@ async function addFiles(fileList) {
       parsed.size = f.size; state.files.push(parsed);
     } catch (err) { toast(err.message); }
   }
-  state.result = null; $('calcResult').hidden = true; renderFiles();
+  state.result = null; $('calcResult').hidden = true; compactUpload(false); renderFiles();
 }
 function renderFiles() {
   $('btnCalc').disabled = $('btnClear').disabled = !state.files.length;
@@ -172,7 +183,7 @@ function applyAdmin() {
   state.files = files; $('period').value = period;
   renderFiles();
   $('btnCalc').click();
-  $('calcChecks').insertAdjacentHTML('afterbegin', `<div class="notice ok">어드민에서 직접 가져온 ${monthLabel(period)} 데이터입니다 (${new Date(pulledAt || Date.now()).toLocaleString('ko-KR')})</div>`);
+  $('uploadSub').insertAdjacentHTML('afterbegin', `<b>어드민에서 가져옴</b> (${new Date(pulledAt || Date.now()).toLocaleString('ko-KR')}) · `);
   history.replaceState(null, '', location.pathname);
   toast('어드민 데이터로 계산했습니다');
 }
@@ -193,13 +204,14 @@ $('btnCalc').onclick = () => {
   const summary = summarize(lines);
   state.result = { period, lines, checks, summary };
   const warn = [...checks.warnings];
-  if (checks.outOfPeriod) warn.push(`대상월(${monthLabel(period)})이 아닌 행 ${checks.outOfPeriod.toLocaleString()}건은 계산에서 뺐습니다 — 월을 잘못 골랐거나 다른 달 파일이 섞였는지 확인하세요`);
-  $('calcChecks').innerHTML = (warn.length ? warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')
-    : `<div class="notice ok">✓ 파일 점검 통과 — 계산에 쓴 행 ${checks.usedRows.toLocaleString()}건 (타부서 코드 ${checks.otherDept.toLocaleString()}건 제외)</div>`);
+  if (checks.outOfPeriod) warn.push(`대상월이 아닌 행 ${checks.outOfPeriod.toLocaleString()}건은 계산에서 뺐어요 (월을 잘못 골랐거나 다른 달 파일이 섞였는지 확인)`);
+  $('calcChecks').innerHTML = warn.length ? `<div class="warns">${warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')}</div>` : '';
+  $('calcChecks').hidden = !warn.length;
+  const allOk = checks.files.every(f => f.totalOk);
+  compactUpload(true, { html: `${warn.length ? '' : '<span class="okline">✓ 점검 통과</span> · '}${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치 있음</b>'} · 계산에 쓴 행 ${checks.usedRows.toLocaleString()}건 · 타부서 코드 ${checks.otherDept.toLocaleString()}건 제외` });
   $('calcSummary').innerHTML = renderSummary(summary, monthLabel(period));
   $('calcUpper').innerHTML = renderUpper(byUpper(lines));
   $('calcResult').hidden = false; $('saveMsg').textContent = '';
-  $('calcResult').scrollIntoView({ behavior: 'smooth' });
 };
 
 $('btnSave').onclick = async () => {
@@ -223,13 +235,7 @@ $('btnSave').onclick = async () => {
 $('btnExportCalc').onclick = () => { const r = state.result; if (r) exportXlsx(r.period, r.summary, r.lines, '계산중'); };
 
 // ---------- 요약 화면 ----------
-const SEG_TITLE = {
-  '유통이관': '① 유통이관 (상부=이관처 · 자점 협력점 제외)',
-  'SKB웨이브넷': '② 코드 – SKB웨이브넷 (자점 포함)',
-  'SKY우리정보': '③ 코드 – SKY우리정보 (자점 포함)',
-  'SK매직': '④ 코드 – SK매직 (자점 포함)',
-};
-const LINES = [
+const LINES = [ // 엑셀 내보내기용 (전체 항목)
   ['sec', '전체정산 · 우리가 준 돈'],
   ['', 'a. 수수료 (사은품 차감전, 기타 차감 반영)', 'D_A'], ['', 'b. 사은품 - 현금', 'D_B'], ['', 'c. 사은품 - 물류', 'D_C'], ['', 'd. 사은품 - 쿠폰', 'D_D'], ['', 'f. 환수', 'D_F'],
   ['b', '최종 정산금액 (A) = a − (b+c+d+f)', 'A'],
@@ -241,21 +247,41 @@ const LINES = [
   ['key', '매출 = B − A − 직접지급사은품', 'REV'],
   ['ref', '참고: 자점운영비 (A 중 자점 지급분)', 'JJ', 1, 'code'],
 ];
+const SEG_NOTE = { '유통이관': '이관처 · 자점 제외', 'SKB웨이브넷': '코드 · 자점 포함', 'SKY우리정보': '코드 · 자점 포함', 'SK매직': '코드 · 자점 포함' };
+let detailOpen = false;
 function renderSummary(summary, title) {
   const s = summary.segments;
   const kv = v => `${Math.round(v || 0).toLocaleString('ko-KR')}<small>원</small>`;
-  const kpi = SEGMENTS.map(k => `<div class="kpi"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
-      <div class="kpi-note">B ${Math.round(s[k].B).toLocaleString('ko-KR')} · A ${Math.round(s[k].A).toLocaleString('ko-KR')}</div></div>`).join('')
-    + `<div class="kpi hot"><div class="kpi-label">유통사업부 합계</div><div class="kpi-value">${kv(summary.total.REV)}</div><span class="tag">매출 = B − A − 사은품</span></div>`;
-  const cards = SEGMENTS.map(k => {
-    const t = s[k];
-    const rows = LINES.filter(l => !(l[4] === 'code' && k === '유통이관')).map(([cls, lab, key, sign = 1]) =>
-      cls === 'sec' ? `<tr class="sec"><td colspan="2">${lab}</td></tr>`
-        : `<tr class="${cls}"><td>${lab}</td><td class="n">${won(sign * t[key])}</td></tr>`).join('');
-    return `<div class="seg-card"><h3>${SEG_TITLE[k]}</h3><table class="sum">${rows}</table></div>`;
-  }).join('');
-  return `<div class="kpis">${kpi}</div><div class="panel"><div class="panel-head"><div><h2>${esc(title)} 구분별 상세</h2><p>단위: 원 · 전체정산(우리가 준 돈)과 상부정산(우리가 받은 돈)</p></div></div><div class="segs">${cards}</div></div>`;
+  const kpi = SEGMENTS.map(k => `<div class="kpi${k === '유통이관' ? ' hot' : ''}"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
+      <div class="kpi-note">${SEG_NOTE[k]}</div></div>`).join('');
+  const cell = (k, v) => `<td class="n">${won(v)}</td>`;
+  const row = (cls, label, key, sign = 1, onlyCode = false) =>
+    `<tr class="${cls}"><td class="lab">${label}</td>${SEGMENTS.map(k => (onlyCode && k === '유통이관') ? '<td class="n">·</td>' : cell(k, sign * s[k][key])).join('')}</tr>`;
+  const subs = (rows) => rows.map(([l, k]) => row('sub', l, k)).join('');
+  const margin = `<tr class="margin"><td class="lab">받은 돈 대비</td>${SEGMENTS.map(k => `<td class="n">${s[k].B > 0 ? (s[k].REV / s[k].B * 100).toFixed(1) + '%' : '-'}</td>`).join('')}</tr>`;
+  const body = [
+    row('mrow plus', '받은 돈 <small>상부정산 최종 B</small>', 'B'),
+    detailOpen ? subs([['수수료', 'U_A'], ['관리수수료', 'U_A1'], ['정산관련', 'U_A2'], ['환수 (−)', 'U_F']]) : '',
+    row('mrow minus', '준 돈 <small>전체정산 최종 A (사은품 차감 후)</small>', 'A'),
+    detailOpen ? subs([['수수료 (사은품 차감전)', 'D_A'], ['사은품 차감 (−)', 'GIFT'], ['환수 (−)', 'D_F']]) : '',
+    row('mrow minus', '직접지급사은품 <small>현금 + 물류 + 쿠폰</small>', 'GIFT'),
+    detailOpen ? subs([['현금', 'D_B'], ['물류', 'D_C'], ['쿠폰', 'D_D']]) : '',
+    row('result', '매출', 'REV'),
+    margin,
+    row('ref', '참고 · 자점운영비 (준 돈 중 자점 지급분)', 'JJ', 1, true),
+  ].join('');
+  const head = `<thead><tr><th>항목<button class="xbtn js-detail">${detailOpen ? '세부 접기 ▴' : '세부 펼치기 ▾'}</button></th>${SEGMENTS.map(k => `<th><span class="dot" style="background:${SEG_COLOR[k]}"></span>${k}</th>`).join('')}</tr></thead>`;
+  return `<div class="kpis">${kpi}</div>
+    <div class="panel"><div class="panel-head"><div><h2>${esc(title)} 구분별 상세</h2><p>단위: 원 · 받은 돈 − 준 돈 − 직접지급사은품 = 매출</p></div></div>
+    <div class="tbl-wrap"><table class="detail-tbl">${head}<tbody>${body}</tbody></table></div></div>`;
 }
+document.addEventListener('click', e => {
+  if (!e.target.classList || !e.target.classList.contains("js-detail")) return;
+  detailOpen = !detailOpen;
+  const host = e.target.closest('#calcSummary, #runBody');
+  if (host && host.id === 'calcSummary' && state.result) host.innerHTML = renderSummary(state.result.summary, monthLabel(state.result.period));
+  else if (host && host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title) + renderUpper(byUpper(state.detail.lines));
+});
 function renderUpper(rows) {
   const tr = rows.map(r => `<tr><td>${r.segment}</td><td>${esc(r.upper_name)}</td><td class="n">${r.cntUp.toLocaleString()}</td><td class="n">${won(r.B)}</td>
     <td class="n">${r.cntDn.toLocaleString()}</td><td class="n">${won(r.A)}</td><td class="n">${won(r.GIFT)}</td><td class="n"><b>${won(r.REV)}</b></td></tr>`).join('');
@@ -277,39 +303,44 @@ function repRun(period) {
   return list.find(r => r.status === '확정') || list[0];
 }
 function renderMonths() {
-  const periods = [...new Set(state.runs.map(r => ym(r.period)))];
-  if (!periods.length) { $('tblMonths').innerHTML = '<tr><td class="muted">저장된 회차가 없습니다. 계산하기 탭에서 계산 후 저장하세요.</td></tr>'; $('monthDetail').innerHTML = ''; return; }
-  const head = `<tr><th>월</th><th>상태</th>${SEGMENTS.map(s => `<th class="n">${s}</th>`).join('')}<th class="n">합계</th><th>회차</th><th>저장</th></tr>`;
-  const tot = Object.fromEntries([...SEGMENTS, 'total'].map(k => [k, 0]));
-  const body = periods.map(p => {
-    const r = repRun(p), s = r.summary.segments, n = state.runs.filter(x => ym(x.period) === p).length;
-    SEGMENTS.forEach(k => tot[k] += s[k].REV); tot.total += r.summary.total.REV;
-    return `<tr class="click ${state.selPeriod === p ? 'sel' : ''}" data-p="${p}"><td>${monthLabel(p)}</td><td><span class="pill ${r.status}">${r.status}</span></td>
-      ${SEGMENTS.map(k => `<td class="n">${won(s[k].REV)}</td>`).join('')}<td class="n"><b>${won(r.summary.total.REV)}</b></td>
-      <td>${n}건</td><td class="muted small">${new Date(r.created_at).toLocaleString('ko-KR')}</td></tr>`;
-  }).join('');
-  const foot = `<tr class="tot"><td>표시 합계</td><td></td>${SEGMENTS.map(k => `<td class="n">${won(tot[k])}</td>`).join('')}<td class="n">${won(tot.total)}</td><td></td><td></td></tr>`;
-  $('tblMonths').innerHTML = head + body + foot;
-  $('tblMonths').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selPeriod = tr.dataset.p; state.selRun = null; renderMonths(); });
-  if (state.selPeriod) renderDetail();
+  const y = state.year;
+  $('yLabel').textContent = `${y}년`;
+  const now = new Date(), nowKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const cells = [];
+  for (let m = 1; m <= 12; m++) {
+    const p = `${y}-${String(m).padStart(2, '0')}`;
+    const r = repRun(p), n = state.runs.filter(x => ym(x.period) === p).length;
+    const cls = ['mcell', r ? '' : 'empty', state.selPeriod === p ? 'sel' : '', p === nowKey ? 'now' : ''].join(' ');
+    const inner = r
+      ? `<div class="mhead"><span class="mname">${m}월</span><span class="pill ${r.status}">${r.status}${n > 1 ? ` · ${n}회` : ''}</span></div>
+         <div class="mlines">${SEGMENTS.map(k => `<div class="mline"><span><i style="background:${SEG_COLOR[k]}"></i>${k}</span><b>${won(r.summary.segments[k].REV)}</b></div>`).join('')}</div>`
+      : `<div class="mhead"><span class="mname">${m}월</span></div><div class="mempty">기록 없음</div>`;
+    cells.push(`<button class="${cls}" data-p="${p}">${inner}</button>`);
+  }
+  $('calGrid').innerHTML = cells.join('');
+  $('calGrid').querySelectorAll('.mcell').forEach(b => b.onclick = () => { state.selPeriod = b.dataset.p; state.selRun = null; state.scrollDetail = true; renderMonths(); });
+  if (state.selPeriod && state.selPeriod.startsWith(String(y))) renderDetail(); else $('monthDetail').innerHTML = '';
 }
+$('yPrev').onclick = () => { state.year--; renderMonths(); };
+$('yNext').onclick = () => { state.year++; renderMonths(); };
 async function renderDetail() {
   const p = state.selPeriod; if (!p) return;
   const list = state.runs.filter(r => ym(r.period) === p);
-  if (!list.length) { $('monthDetail').innerHTML = ''; return; }
+  if (!list.length) { $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)}</h2><p>저장된 회차가 없어요. 계산하기에서 계산한 뒤 저장하면 여기에 나와요.</p></div></div></div>`; return; }
   const run = list.find(r => r.id === state.selRun) || repRun(p);
   state.selRun = run.id;
   const runRows = list.map(r => `<tr class="click ${r.id === run.id ? 'sel' : ''}" data-id="${r.id}"><td><span class="pill ${r.status}">${r.status}</span></td>
     <td class="muted small">${new Date(r.created_at).toLocaleString('ko-KR')}</td><td class="small">${esc(r.created_by || '')}</td>
-    <td class="n">${won(r.summary.total.REV)}</td><td class="small">${esc(r.note || '')}</td></tr>`).join('');
+    ${SEGMENTS.map(k => `<td class="n">${won(r.summary.segments[k].REV)}</td>`).join('')}<td class="small">${esc(r.note || '')}</td></tr>`).join('');
   $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)} 회차</h2><p>회차를 누르면 그 회차 숫자로 바뀌어요</p></div>
       <div class="row gap wrap">
         ${run.status === '확정' ? '<button id="btnUnconfirm">가정산으로 되돌리기</button>' : '<button id="btnConfirm" class="primary">이 회차를 확정으로</button>'}
         <button id="btnExportRun">엑셀 다운로드</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
-      <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th><th class="n">합계 매출</th><th>메모</th></tr>${runRows}</table></div>
+      <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${SEGMENTS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
       <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
     </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
   $('monthDetail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selRun = tr.dataset.id; renderDetail(); });
+  if (state.scrollDetail) { state.scrollDetail = false; $('monthDetail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   const setStatus = async st => {
     if (st === '확정' && list.some(x => x.status === '확정' && x.id !== run.id) && !await ask('이미 확정된 회차가 있습니다. 이 회차를 확정하면 기존 확정은 가정산으로 바뀝니다. 계속할까요?')) return;
     const { error } = await sb.rpc('dist_pnl_set_status', { p_run: run.id, p_status: st });
@@ -327,7 +358,8 @@ async function renderDetail() {
   const { data: lines, error } = await sb.from('dist_pnl_lines').select('*').eq('run_id', run.id);
   if (error) { $('runBody').innerHTML = `<div class="panel err">${esc(error.message)}</div>`; return; }
   const summary = summarize(lines);
-  $('runBody').innerHTML = renderSummary(summary, `${monthLabel(p)} (${run.status})`) + renderUpper(byUpper(lines));
+  state.detail = { summary, lines, title: `${monthLabel(p)} (${run.status})` };
+  $('runBody').innerHTML = renderSummary(summary, state.detail.title) + renderUpper(byUpper(lines));
   $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, run.status);
 }
 
@@ -335,13 +367,13 @@ async function renderDetail() {
 function exportXlsx(period, summary, lines, status) {
   const wb = XLSX.utils.book_new();
   const s = summary.segments;
-  const aoa = [[`유통사업부 손익매출 ${monthLabel(period)} (${status})`], ['단위: 원'], [], ['항목', ...SEGMENTS, '합계']];
+  const aoa = [[`유통사업부 손익매출 ${monthLabel(period)} (${status})`], ['단위: 원'], [], ['항목', ...SEGMENTS]];
   for (const [cls, lab, key, sign = 1, only] of LINES) {
     if (cls === 'sec') { aoa.push([`[${lab}]`]); continue; }
     const vals = SEGMENTS.map(k => (only === 'code' && k === '유통이관') ? null : sign * s[k][key]);
-    aoa.push([lab, ...vals, vals.reduce((a, b) => a + (b || 0), 0)]);
+    aoa.push([lab, ...vals]);
   }
-  const ws1 = XLSX.utils.aoa_to_sheet(aoa); ws1['!cols'] = [{ wch: 42 }, ...SEGMENTS.map(() => ({ wch: 16 })), { wch: 16 }];
+  const ws1 = XLSX.utils.aoa_to_sheet(aoa); ws1['!cols'] = [{ wch: 42 }, ...SEGMENTS.map(() => ({ wch: 16 }))];
   numFmt(ws1); XLSX.utils.book_append_sheet(wb, ws1, '요약');
   const up = byUpper(lines).map(r => ({ 구분: r.segment, 상부점: r.upper_name, '상부 건수': r.cntUp, '상부 B': r.B, '전체 건수': r.cntDn, '전체 A': r.A, 직접지급사은품: r.GIFT, 매출: r.REV }));
   const ws2 = XLSX.utils.json_to_sheet(up); ws2['!cols'] = [{ wch: 14 }, { wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
@@ -353,25 +385,6 @@ function exportXlsx(period, summary, lines, status) {
 function numFmt(ws) {
   for (const a in ws) if (a[0] !== '!' && ws[a].t === 'n') ws[a].z = '#,##0;-#,##0;"-"';
 }
-
-// ---------- 기준 ----------
-$('rulesBox').innerHTML = `
-<h3>대상</h3><ul>
-<li><b>유통이관</b>: 상부점 이름이 숫자로 시작하지 않는 이관처. 협력점이 자점(숫자로 시작)인 건은 제외 — 단 <code>0.영업정산</code>은 정산 입력용이라 포함</li>
-<li><b>코드</b>: 상부점에 ${RULES.codeSegments.map(c => `<code>${c.match}</code> → ${c.segment}`).join(', ')} 가 들어간 숫자 코드. 협력점은 자점·외부 모두 포함</li>
-<li>그 밖의 숫자 코드(KT·SKT, 우신·대성 SKY 등)는 타부서라 제외</li></ul>
-<h3>월 귀속</h3><ul><li>일반 = 개통일이 대상월인 건 / 추가·환수 = 정산예정일이 대상월인 건 (파일에 다른 달 행이 있어도 자동으로 걸러냄)</li><li>엑셀을 직접 올릴 때: 개통일 기준 파일은 정산종류 '일반'만, 정산예정일 기준 파일은 '추가'·'환수'만 받아야 중복이 없습니다 (겹치면 경고 표시)</li></ul>
-<h3>항목</h3><ul>
-<li>사은품: b.현금 = 차감내역-사은품, c.물류 = 차감내역-물류, d.쿠폰 = 차감내역-쿠폰 (일반·추가 건)</li>
-<li>a.수수료 = 정산금액 + b + c + d (선납·할인탭·미비서류·기타 차감은 수수료에 반영)</li>
-<li>상부 a-1.관리수수료 = 상품명에 <code>${RULES.mgmtProductKeyword}</code>, a-2.정산관련 = 상품명에 <code>${RULES.settleProductKeyword}</code> (a에서는 제외)</li>
-<li>f.환수 = 환수 건 정산금액(차감액을 양수로 표시)</li></ul>
-<h3>산식</h3><ul>
-<li>전체 A = a − (b+c+d+f) = 데이터 정산금액 합계</li>
-<li>상부 B = (a+a1+a2) − (b+c+d+f) = 데이터 정산금액 합계</li>
-<li><b>매출 = B − A − 직접지급사은품(전체 b+c+d)</b></li>
-<li>자점운영비 = 코드 매출 중 자점 협력점에 지급한 전체정산 금액 (참고 표시, 매출에서 이미 차감됨)</li></ul>
-<p class="muted small">기준 버전 ${RULES.version} · 기준 변경은 <code>src/rules.js</code></p>`;
 
 setupBookmarklet();
 announceReady();

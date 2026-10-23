@@ -108,7 +108,7 @@ button:focus-visible { outline: 3px solid #9db8ff; outline-offset: 2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* KPI 타일 */
-.kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
 .kpi { background: var(--blue); color: #fff; border-radius: 16px; padding: 18px 16px 16px; min-width: 0; overflow: hidden; display: grid; gap: 6px; align-content: start; min-height: 128px; }
 .kpi.hot { background: var(--orange); box-shadow: 0 10px 24px rgba(247,115,27,.25); }
 .kpi-label { font-size: 13px; font-weight: 700; }
@@ -149,7 +149,7 @@ table.grid tr.tot td { font-weight: 800; background: var(--head); }
 .modal-box { background: var(--card); border-radius: 18px; padding: 24px; max-width: 440px; width: calc(100% - 32px); }
 
 @media (max-width: 1180px) {
-  .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .segs { grid-template-columns: 1fr; }
 }
 @media (max-width: 860px) {
@@ -167,3 +167,82 @@ table.grid tr.tot td { font-weight: 800; background: var(--head); }
   .panel { padding: 18px; }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---------- 사이드바 계산 기준 카드 ---------- */
+.rulecard { background: #fff; color: var(--ink); border-radius: 14px; padding: 4px 14px; }
+.rulecard summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 14px; padding: 10px 0; }
+.rulecard summary::-webkit-details-marker { display: none; }
+.rulecard summary::after { content: "▾"; margin-left: auto; color: var(--faint); font-size: 12px; transition: transform .15s; }
+.rulecard[open] summary::after { transform: rotate(180deg); }
+.rulecard .ri { width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--side); color: var(--side); font-size: 11px; display: grid; place-items: center; font-weight: 800; }
+.rules { list-style: none; margin: 0; padding: 0 0 10px; display: grid; }
+.rules li { position: relative; padding: 10px 0 10px 18px; border-top: 1px dashed var(--line); display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.rules li::before { content: ""; position: absolute; left: 2px; top: 15px; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+.rules li b { color: var(--ink); font-size: 13px; }
+.rules code { justify-self: start; background: var(--bg); color: var(--ink); font-weight: 700; font-size: 11.5px; padding: 2px 7px; border-radius: 6px; font-family: inherit; }
+.rules .c1 { --c: #3d6ef2; } .rules .c2 { --c: #8b5cf6; } .rules .c3 { --c: #f59e0b; } .rules .c4 { --c: #17a36b; } .rules .c5 { --c: #e5484d; }
+
+/* ---------- 업로드 접기 ---------- */
+.stack-md { display: grid; gap: 14px; }
+button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius: 9px; }
+#uploadCard.compact { padding: 16px 20px; gap: 12px; }
+#uploadCard.compact .panel-head h2 { font-size: 15px; }
+.okline { color: var(--ok); font-weight: 700; }
+.warns { display: grid; gap: 6px; }
+.notice { padding: 9px 12px; font-size: 12.5px; }
+
+/* ---------- 구분별 상세 (한 표) ---------- */
+.detail-tbl { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 13.5px; }
+.detail-tbl th, .detail-tbl td { padding: 11px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.detail-tbl thead th { background: var(--head); font-size: 12.5px; color: var(--muted); font-weight: 700; text-align: right; }
+.detail-tbl thead th:first-child { text-align: left; }
+.detail-tbl thead th .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.detail-tbl td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.detail-tbl td.lab { color: var(--ink); }
+.detail-tbl tr.mrow td { font-weight: 800; }
+.detail-tbl tr.mrow td.lab small { display: block; font-weight: 500; color: var(--muted); font-size: 11.5px; }
+.detail-tbl tr.sub td { font-size: 12.5px; color: var(--muted); background: #fbfcfe; padding-top: 7px; padding-bottom: 7px; }
+.detail-tbl tr.sub td.lab { padding-left: 34px; }
+.detail-tbl tr.sub td.n { color: var(--ink); }
+.detail-tbl tr.minus td.lab::before { content: "−"; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--bg); color: var(--muted); margin-right: 8px; font-weight: 800; }
+.detail-tbl tr.plus td.lab::before { content: "+"; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--soft); color: var(--side); margin-right: 8px; font-weight: 800; }
+.detail-tbl tr.result td { background: var(--soft); color: var(--side); font-size: 15px; font-weight: 800; border-bottom: 0; }
+.detail-tbl tr.result td.lab::before { content: "="; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 6px; background: var(--side); color: #fff; margin-right: 8px; font-weight: 800; font-size: 13px; }
+.detail-tbl tr.result .neg { color: var(--neg); }
+.detail-tbl tr.ref td { color: var(--faint); font-size: 12px; border-bottom: 0; }
+.detail-tbl tr.margin td { color: var(--muted); font-size: 12px; background: var(--soft); border-bottom: 0; padding-top: 0; }
+.detail-tbl tr.toggle td { padding: 0; border-bottom: 0; }
+.xbtn { all: unset; cursor: pointer; font-size: 11.5px; font-weight: 700; color: var(--side); margin-left: 8px; }
+
+/* ---------- 달력 ---------- */
+.yearnav { display: inline-flex; align-items: center; gap: 4px; background: var(--bg); border-radius: 10px; padding: 3px; }
+.yearnav button { height: 30px; width: 30px; padding: 0; border: 0; background: transparent; font-size: 18px; color: var(--muted); }
+.yearnav button:hover:not(:disabled) { background: var(--card); box-shadow: none; }
+.yearnav b { min-width: 64px; text-align: center; font-size: 14px; }
+.cal { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.mcell { all: unset; box-sizing: border-box; cursor: pointer; border: 1.5px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 8px; min-height: 150px; align-content: start; background: var(--card); transition: border-color .15s, background .15s, box-shadow .15s; }
+.mcell:hover { border-color: #c9d6fb; box-shadow: 0 4px 14px rgba(20,26,38,.06); }
+.mcell:focus-visible { outline: 3px solid #9db8ff; outline-offset: 2px; }
+.mcell.sel { border-color: var(--side); background: var(--soft); }
+.mcell.empty { background: #fafbfc; }
+.mcell.empty .mname { color: var(--faint); }
+.mcell.now .mname::after { content: "이번 달"; margin-left: 6px; font-size: 10.5px; font-weight: 700; color: var(--side); background: #dfe7fd; padding: 1px 6px; border-radius: 5px; vertical-align: 2px; }
+.mhead { display: flex; justify-content: space-between; align-items: center; }
+.mname { font-size: 16px; font-weight: 800; }
+.mlines { display: grid; gap: 4px; }
+.mline { display: flex; justify-content: space-between; gap: 6px; font-size: 12px; }
+.mline span { color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.mline span i { width: 6px; height: 6px; border-radius: 50%; display: inline-block; }
+.mline b { font-variant-numeric: tabular-nums; font-weight: 700; }
+.mempty { font-size: 12px; color: var(--faint); }
+.cal-legend { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
+.lg::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.lg.확정::before { background: var(--ok); } .lg.가정산::before { background: #f59e0b; } .lg.none::before { background: var(--line); }
+
+@media (max-width: 1180px) { .cal { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 860px) { .rulecard { display: none; } }
+@media (max-width: 520px) { .cal { grid-template-columns: repeat(2, minmax(0, 1fr)); } .mcell { min-height: 0; } }
+.who { margin-top: auto; display: flex; align-items: center; gap: 8px; font-size: 12px; padding: 0 6px; opacity: .9; }
+.who b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; font-weight: 600; }
+.side { gap: 16px; }
+#saveMsg:empty, #calcChecks:empty { display: none; }

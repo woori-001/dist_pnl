@@ -20,7 +20,6 @@
     <nav class="nav" id="nav" hidden>
       <button class="on" data-tab="calc"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h2M14 10h2M8 14h2M14 14h2M8 18h2M14 18h2"/></svg></span><span><b>계산하기</b><small>어드민·엑셀로 월 계산</small></span></button>
       <button data-tab="history"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span><span><b>월별 내역</b><small>가정산·확정 기록</small></span></button>
-      <button data-tab="rules"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M8 7h8M8 11h6"/></svg></span><span><b>계산 기준</b><small>대상·항목·산식</small></span></button>
     </nav>
 
     <div class="divider"></div>
@@ -28,17 +27,24 @@
     <div class="bmbox" id="bmCard" hidden>
       <div class="bm-title">어드민 가져오기 버튼</div>
       <a id="bmLink" class="bm" draggable="true">⭳ 유통손익 가져오기</a>
-      <div class="bm-help">이 버튼을 <b>북마크 줄로 끌어다 놓고</b>, 어드민(workline.kr) 화면에서 누르세요.</div>
+      <div class="bm-help">북마크 줄로 끌어다 놓고 어드민에서 누르세요</div>
     </div>
 
-    <div class="meta" id="who" hidden>
-      <div><span>로그인</span><b id="whoEmail"></b></div>
-      <div><span>기준 버전</span><b id="ruleVer"></b></div>
-      <div><span>저장 회차</span><b id="runCount">-</b></div>
-      <button class="side-link" id="btnLogout">로그아웃</button>
-    </div>
+    <details class="rulecard" id="ruleCard" open hidden>
+      <summary><span class="ri">i</span>계산 기준</summary>
+      <ul class="rules">
+        <li class="c1"><b>유통이관</b><span>이관처 상부 건 · 자점 협력점 제외</span></li>
+        <li class="c2"><b>코드매출</b><span>SKB웨이브넷 · SKY우리정보 · SK매직<br>자점 협력점 포함</span></li>
+        <li class="c3"><b>월 기준</b><code>일반 = 개통일</code><code>추가·환수 = 정산예정일</code></li>
+        <li class="c4"><b>매출</b><code>B − A − 사은품</code><span>B 받은 돈 · A 준 돈 · 사은품 = 현금+물류+쿠폰</span></li>
+        <li class="c5"><b>상부 항목</b><span>상품명 '_관리' = 관리수수료<br>'정산관련' = 정산관련</span></li>
+      </ul>
+    </details>
 
-    <div class="side-foot">고객 개인정보는 브라우저 안에서만 계산되고, 서버에는 집계 숫자만 저장돼요.</div>
+    <div class="who" id="who" hidden>
+      <b id="whoEmail"></b><button class="side-link" id="btnLogout">로그아웃</button>
+      <span hidden id="ruleVer"></span><span hidden id="runCount"></span>
+    </div>
   </aside>
 
   <!-- 본문 -->
@@ -75,19 +81,25 @@
       <div class="pane stack-lg" id="pane-calc">
         <div class="panel" id="uploadCard">
           <div class="panel-head">
-            <div><h2>엑셀로 계산하기</h2><p>어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.</p></div>
-            <label class="inline">대상월 <input type="month" id="period"></label>
+            <div><h2 id="uploadTitle">엑셀로 계산하기</h2><p id="uploadSub">어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.</p></div>
+            <div class="row gap wrap">
+              <button id="btnToggleFiles" class="small-btn" hidden>파일 목록 보기</button>
+              <button id="btnNew" class="small-btn" hidden>새로 계산</button>
+              <label class="inline">대상월 <input type="month" id="period"></label>
+            </div>
           </div>
-          <div id="drop" class="drop" tabindex="0">
-            <div class="drop-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></div>
-            <strong>엑셀을 여기에 끌어다 놓거나 클릭해서 고르세요</strong>
-            <span class="muted small">일반 = 개통일 기준 파일 · 추가·환수 = 정산예정일 기준 파일 (전체정산·상부정산 각각)</span>
-            <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
-          </div>
-          <div id="fileList"></div>
-          <div class="row gap end">
-            <button id="btnClear" disabled>파일 비우기</button>
-            <button id="btnCalc" class="primary" disabled>계산하기</button>
+          <div id="uploadBody" class="stack-md">
+            <div id="drop" class="drop" tabindex="0">
+              <div class="drop-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></div>
+              <strong>엑셀을 여기에 끌어다 놓거나 클릭해서 고르세요</strong>
+              <span class="muted small">일반 = 개통일 기준 파일 · 추가·환수 = 정산예정일 기준 파일 (전체정산·상부정산 각각)</span>
+              <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
+            </div>
+            <div id="fileList"></div>
+            <div class="row gap end" id="uploadBtns">
+              <button id="btnClear" disabled>파일 비우기</button>
+              <button id="btnCalc" class="primary" disabled>계산하기</button>
+            </div>
           </div>
         </div>
 
@@ -114,16 +126,19 @@
       <!-- 월별 내역 -->
       <div class="pane stack-lg" id="pane-history" hidden>
         <div class="panel">
-          <div class="panel-head"><div><h2>월별 매출</h2><p>한 달에 확정 회차가 있으면 확정을, 없으면 가장 최근 가정산을 보여줘요. 행을 누르면 상세가 열려요.</p></div><button id="btnReload">새로고침</button></div>
-          <div class="tbl-wrap"><table class="grid" id="tblMonths"></table></div>
+          <div class="panel-head">
+            <div><h2>월별 매출 달력</h2><p>달을 누르면 그 달 내역이 열려요 · 확정이 있으면 확정, 없으면 최근 가정산 기준</p></div>
+            <div class="row gap">
+              <div class="yearnav"><button id="yPrev" aria-label="이전 해">‹</button><b id="yLabel">2026년</b><button id="yNext" aria-label="다음 해">›</button></div>
+              <button id="btnReload" class="small-btn">새로고침</button>
+            </div>
+          </div>
+          <div class="cal" id="calGrid"></div>
+          <div class="cal-legend"><span class="lg 확정">확정</span><span class="lg 가정산">가정산</span><span class="lg none">기록 없음</span></div>
         </div>
         <div id="monthDetail" class="stack-lg"></div>
       </div>
 
-      <!-- 기준 -->
-      <div class="pane" id="pane-rules" hidden>
-        <div class="panel prose" id="rulesBox"></div>
-      </div>
     </section>
   </main>
 </div>
