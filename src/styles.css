@@ -319,3 +319,11 @@ button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius
   .kpi-col .kpi-btn.hot::after { display: none; }
 }
 .kpi-col .kpi-btn { overflow: visible; }
+
+/* 화살표 이음새 없애기 + 타일 높이를 표 높이에 맞추기 */
+.sum-split { align-items: stretch; }
+.kpi-col { position: static; grid-template-rows: repeat(4, minmax(0, 1fr)); height: 100%; }
+.kpi-col .kpi-btn { align-content: center; }
+.kpi-col .kpi-btn.hot::after { content: ""; position: absolute; right: -7px; top: 50%; width: 16px; height: 16px; border: 0; border-radius: 3px; background: var(--orange); transform: translateY(-50%) rotate(45deg); z-index: -1; }
+.kpi-col .kpi-btn.hot { z-index: 1; isolation: auto; }
+@media (max-width: 1100px) { .kpi-col { grid-template-rows: none; height: auto; } }
