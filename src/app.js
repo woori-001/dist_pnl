@@ -271,7 +271,7 @@ function renderSummary(summary, title, segStatus = blankSt()) {
   const body = rows.map(([g, item, up, dn]) => `<tr>${g ? `<th class="grp" rowspan="${grpSpan[g]}">${g}</th>` : ''}<td class="item">${item}</td>
       <td class="n">${won(up)}</td><td class="n">${won(dn)}</td><td class="n diff">${won(up - dn)}</td></tr>`).join('')
     + `<tr><th class="grp" colspan="2">환수</th><td class="n">${won(-t.U_F)}</td><td class="n">${won(-t.D_F)}</td><td class="n diff">${won(-t.U_F + t.D_F)}</td></tr>`
-    + (detailSeg === '유통이관' ? '' : `<tr><th class="grp" colspan="2">자점운영비</th><td class="n">${won(-t.JF)}</td><td class="n">-</td><td class="n diff">${won(-t.JF)}</td></tr>`)
+    + `<tr><th class="grp" colspan="2">자점운영비</th><td class="n">${won(-t.JF)}</td><td class="n">-</td><td class="n diff">${won(-t.JF)}</td></tr>`
     + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B - (t.JF || 0))}</td><td class="n">${won(t.A)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
   const jj = detailSeg === '유통이관' ? '' : `<p class="muted small" style="margin:0">자점운영비 = 자점 영업팀 '일반' 건의 자점 마진(접수일 기준 금액, 7.유통사업부·0.영업정산 제외) · 참고: 전체정산 중 자점 협력점 지급분 ${won(t.JJ)}원</p>`;
   return `<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${kpi}</div>
