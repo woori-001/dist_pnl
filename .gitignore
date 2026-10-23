@@ -1,0 +1,7 @@
+# 원자료 엑셀은 고객 개인정보가 있으니 절대 올리지 않음
+*.xlsx
+*.xls
+*.csv
+node_modules/
+.DS_Store
+.env*
