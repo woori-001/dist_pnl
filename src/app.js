@@ -141,7 +141,7 @@ function enterImportMode() {
   if (!location.hash.includes('admin-import')) return;
   importDone = false;
   $('bmCard').hidden = true; $('uploadCard').hidden = true; $('calcResult').hidden = true;
-  adminWait('어드민에서 데이터를 받는 중이에요', '어드민 창에서 엑셀 6개를 만들고 있어요. 1~2분 걸려요. 어드민 창을 닫지 마세요.');
+  adminWait('어드민에서 데이터를 받는 중이에요', '어드민 창에서 엑셀 10개(옛날 데이터 포함)를 만들고 있어요. 1~2분 걸려요. 어드민 창을 닫지 마세요.');
   clearTimeout(waitTimer);
   waitTimer = setTimeout(() => adminWait('아직 데이터가 오지 않았어요', '어드민 창의 작은 창에 오류가 떠 있는지 확인해 주세요. 엑셀을 직접 올려도 됩니다.', { error: true }) || ($('uploadCard').hidden = false), 4 * 60 * 1000);
 }
@@ -169,7 +169,7 @@ window.addEventListener('message', e => {
     try {
       // 직접 올린 엑셀과 똑같은 방식으로 읽음 (상부/전체는 시트 이름으로 다시 판별)
       const p = parseWorkbook(XLSX, new Uint8Array(f.buffer), String(f.name || '어드민 엑셀'));
-      p.source = 'admin'; parsed.push(p);
+      p.source = 'admin'; p.db = f.old ? 'old' : ''; parsed.push(p);
     } catch (err) { errors.push(err.message); }
   }
   pendingAdmin = { period, pulledAt: e.data.pulledAt, files: parsed, errors };

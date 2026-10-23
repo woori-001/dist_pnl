@@ -91,10 +91,10 @@ export function compute(parsed, period) {
         cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0 }; map.set(key, l); }
       l.cnt++; l.amount += r.amount; l.gift_cash += gift.c; l.gift_goods += gift.g; l.gift_coupon += gift.k;
       checks.usedRows++;
-      const kf = f.side + '|' + r.kind; (kindFiles[kf] = kindFiles[kf] || new Set()).add(f.fileName);
+      const kf = f.side + '|' + r.kind + '|' + (f.db || ''); (kindFiles[kf] = kindFiles[kf] || new Set()).add(f.fileName);
     }
     const sk = f.side + JSON.stringify(kinds) + sumAll;
-    if (seen.has(sk)) checks.warnings.push(`${f.fileName}: 같은 내용의 파일이 두 번 올라온 것 같습니다`);
+    if (f.rows.length && seen.has(sk)) checks.warnings.push(`${f.fileName}: 같은 내용의 파일이 두 번 올라온 것 같습니다`);
     seen.add(sk);
   }
   for (const [k, set] of Object.entries(kindFiles)) if (set.size > 1) {
