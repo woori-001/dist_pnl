@@ -305,3 +305,17 @@ button.small-btn { height: 36px; padding: 0 12px; font-size: 13px; border-radius
 .cmp-tbl tr.total td.rev { background: #fff3c4; color: var(--ink); }
 .cmp-tbl tr.total td.rev .neg { color: var(--neg); }
 @media (max-width: 860px) { .cmp-tbl td, .cmp-tbl tbody th, .cmp-tbl thead th { padding: 9px 10px; } .cmp-tbl th.grp { width: auto; } }
+
+/* ---------- 요약: 왼쪽 구분 타일(세로) + 오른쪽 결과표 ---------- */
+.sum-split { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 18px; align-items: start; }
+.kpi-col { display: grid; gap: 12px; position: sticky; top: 20px; }
+.kpi-col .kpi-btn { min-height: 0; padding: 16px 18px; position: relative; }
+.kpi-col .kpi-btn .kpi-value { margin-top: 2px; font-size: clamp(18px, 1.6vw, 23px); }
+.kpi-col .kpi-btn.hot::after { content: ""; position: absolute; right: -10px; top: 50%; transform: translateY(-50%); border: 9px solid transparent; border-left-color: var(--orange); border-right: 0; }
+.sum-panel { min-height: 100%; }
+@media (max-width: 1100px) {
+  .sum-split { grid-template-columns: 1fr; }
+  .kpi-col { position: static; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .kpi-col .kpi-btn.hot::after { display: none; }
+}
+.kpi-col .kpi-btn { overflow: visible; }

@@ -251,7 +251,7 @@ let detailSeg = '유통이관';
 function renderSummary(summary, title) {
   const s = summary.segments;
   const kv = v => `${Math.round(v || 0).toLocaleString('ko-KR')}<small>원</small>`;
-  const kpi = SEGMENTS.map(k => `<button class="kpi kpi-btn${k === detailSeg ? ' hot' : ''}" data-seg="${k}"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
+  const kpi = SEGMENTS.map(k => `<button class="kpi kpi-btn${k === detailSeg ? ' hot' : ''}" data-seg="${k}" role="tab" aria-selected="${k === detailSeg}"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
       <div class="kpi-note">${SEG_NOTE[k]}</div></button>`).join('');
   const t = s[detailSeg];
   // 상부·전체를 같은 항목으로 나란히 (차감 항목은 −로 표시)
@@ -264,11 +264,10 @@ function renderSummary(summary, title) {
       <td class="n">${won(up)}</td><td class="n">${won(dn)}</td><td class="n diff">${won(up - dn)}</td></tr>`).join('')
     + `<tr><th class="grp" colspan="2">환수</th><td class="n">${won(-t.U_F)}</td><td class="n">${won(-t.D_F)}</td><td class="n diff">${won(-t.U_F + t.D_F)}</td></tr>`
     + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B)}</td><td class="n">${won(t.A)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
-  const segTabs = SEGMENTS.map(k => `<button class="segtab${k === detailSeg ? ' on' : ''}" data-seg="${k}"><i style="background:${SEG_COLOR[k]}"></i>${k}</button>`).join('');
   const jj = detailSeg === '유통이관' ? '' : `<p class="muted small" style="margin:0">참고 · 자점운영비(전체정산 중 자점 협력점 지급분): ${won(t.JJ)}원</p>`;
-  return `<div class="kpis">${kpi}</div>
-    <div class="panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg}</h2><p>단위: 원 · 합계(상부−전체) = 매출 · 차감 항목은 −로 표시</p></div><div class="segtabs">${segTabs}</div></div>
-    <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div>`;
+  return `<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${kpi}</div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg}</h2><p>단위: 원 · 합계(상부−전체) = 매출 · 차감 항목은 −로 표시 · 왼쪽 구분을 누르면 표가 바뀌어요</p></div></div>
+    <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-seg]'); if (!b) return;
