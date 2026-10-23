@@ -136,7 +136,7 @@ export function summarize(lines) {
     t.B = (t.U_A + t.U_A1 + t.U_A2) - (t.U_B + t.U_C + t.U_D + t.U_F);
     t.BA = t.B - t.A;
     t.GIFT = t.D_B + t.D_C + t.D_D;
-    t.REV = t.BA - t.GIFT;
+    t.REV = t.BA; // 매출 = 상부 최종(B) − 전체 최종(A). 사은품은 A에서 이미 차감되어 있음
     total.REV += t.REV;
   }
   return { segments: seg, total };
@@ -155,6 +155,6 @@ export function byUpper(lines) {
     if (l.side === '상부') { r.B += l.amount; r.cntUp += l.cnt; }
     else { r.A += l.amount; r.cntDn += l.cnt; r.GIFT += l.gift_cash + l.gift_goods + l.gift_coupon; }
   }
-  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A - r.GIFT }))
+  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A }))
     .sort((a, b) => SEGMENTS.indexOf(a.segment) - SEGMENTS.indexOf(b.segment) || b.REV - a.REV);
 }
