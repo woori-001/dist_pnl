@@ -40,6 +40,7 @@ async function onSession(session) {
   if (error || !data?.length) { show('viewDenied'); return; }
   show('viewApp');
   loadRuns();
+  applyAdmin();
 }
 $('formLogin').addEventListener('submit', async e => {
   e.preventDefault(); $('loginErr').textContent = '';
@@ -86,7 +87,7 @@ function renderFiles() {
     const k = {}; f.rows.forEach(r => k[r.kind] = (k[r.kind] || 0) + 1);
     const sum = f.rows.reduce((s, r) => s + r.amount, 0);
     const ok = f.fileTotal === null || f.fileTotal === sum;
-    return `<tr><td><span class="pill ${f.side === '상부' ? 'up' : 'dn'}">${f.side}정산</span></td><td>${esc(f.fileName)}</td>
+    return `<tr><td><span class="pill ${f.side === '상부' ? 'up' : 'dn'}">${f.side}정산</span></td><td>${f.source === 'admin' ? '<span class="pill ok">어드민</span> ' : ''}${esc(f.fileName)}</td>
       <td>${Object.entries(k).map(([a, b]) => `${a} ${b.toLocaleString()}`).join(' · ')}</td>
       <td class="n">${won(sum)}</td><td>${ok ? '<span class="pill ok">합계 일치</span>' : '<span class="pill warn">합계 불일치</span>'}</td>
       <td><button class="link danger" data-rm="${i}">빼기</button></td></tr>`;
@@ -94,6 +95,52 @@ function renderFiles() {
   $('fileList').innerHTML = `<table class="files"><tr><th>구분</th><th>파일</th><th>정산종류별 건수</th><th>정산금액 합계</th><th>점검</th><th></th></tr>${rows}</table>`;
   $('fileList').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { state.files.splice(+b.dataset.rm, 1); state.result = null; $('calcResult').hidden = true; renderFiles(); });
 }
+
+// ---------- 어드민에서 바로 가져오기 (북마클릿 ↔ 이 창 postMessage) ----------
+const ADMIN_ORIGIN = 'https://workline.kr';
+const CALC_URL = location.origin + location.pathname.replace(/index\.html$/, '');
+let pendingAdmin = null;
+function announceReady() {
+  if (window.opener && location.hash.includes('admin-import')) {
+    try { window.opener.postMessage({ type: 'dist-pnl-calc-ready' }, ADMIN_ORIGIN); } catch { /* 어드민 창이 닫힘 */ }
+  }
+}
+window.addEventListener('message', e => {
+  if (e.origin !== ADMIN_ORIGIN || !e.data || e.data.type !== 'dist-pnl-admin-files') return; // 어드민 창에서 온 것만 받음
+  const { period, files } = e.data;
+  if (!/^\d{4}-\d{2}$/.test(period) || !Array.isArray(files)) return;
+  const parsed = [], errors = [];
+  for (const f of files) {
+    try {
+      // 직접 올린 엑셀과 똑같은 방식으로 읽음 (상부/전체는 시트 이름으로 다시 판별)
+      const p = parseWorkbook(XLSX, new Uint8Array(f.buffer), String(f.name || '어드민 엑셀'));
+      p.source = 'admin'; parsed.push(p);
+    } catch (err) { errors.push(err.message); }
+  }
+  pendingAdmin = { period, pulledAt: e.data.pulledAt, files: parsed, errors };
+  applyAdmin();
+});
+window.addEventListener('hashchange', announceReady);
+function applyAdmin() {
+  if (!pendingAdmin || $('viewApp').hidden) return;
+  const { period, files, pulledAt, errors } = pendingAdmin; pendingAdmin = null;
+  if (errors.length) errors.forEach(m => toast(m));
+  document.querySelector('.tab[data-tab=calc]').click();
+  state.files = files; $('period').value = period;
+  renderFiles();
+  $('btnCalc').click();
+  $('calcChecks').insertAdjacentHTML('afterbegin', `<div class="notice ok">어드민에서 직접 가져온 ${monthLabel(period)} 데이터입니다 (${new Date(pulledAt || Date.now()).toLocaleString('ko-KR')})</div>`);
+  history.replaceState(null, '', location.pathname);
+  toast('어드민 데이터로 계산했습니다');
+}
+async function setupBookmarklet() {
+  try {
+    let code = await fetch('src/admin-pull.js', { cache: 'no-cache' }).then(r => r.text());
+    code = code.replace(/^\/\*[\s\S]*?\*\/\s*/, '').replace('__CALC_URL__', CALC_URL);
+    $('bmLink').href = 'javascript:' + encodeURIComponent(code);
+  } catch { $('bmLink').removeAttribute('href'); }
+}
+$('bmLink').onclick = e => { e.preventDefault(); toast('클릭하지 말고, 이 버튼을 즐겨찾기(북마크) 막대로 끌어다 놓으세요'); };
 
 // ---------- 계산 ----------
 $('btnCalc').onclick = () => {
@@ -281,4 +328,6 @@ $('rulesBox').innerHTML = `
 <li>자점운영비 = 코드 매출 중 자점 협력점에 지급한 전체정산 금액 (참고 표시, 매출에서 이미 차감됨)</li></ul>
 <p class="muted small">기준 버전 ${RULES.version} · 기준 변경은 <code>src/rules.js</code></p>`;
 
+setupBookmarklet();
+announceReady();
 boot();

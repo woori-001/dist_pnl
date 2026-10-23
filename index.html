@@ -44,6 +44,16 @@
     <!-- 계산하기 -->
     <div class="pane" id="pane-calc">
       <div class="card">
+        <div class="row between wrap gap">
+          <div>
+            <h3>어드민에서 바로 가져오기</h3>
+            <p class="muted small" style="margin:0">처음 한 번: 오른쪽 버튼을 브라우저 <b>즐겨찾기(북마크) 막대로 끌어다 놓기</b> → 이후 매달: 어드민(workline.kr) 로그인 → 즐겨찾기 <b>유통손익 가져오기</b> 클릭 → 대상월 고르고 가져오기 → 이 계산기 창이 열리며 자동 계산</p>
+          </div>
+          <a id="bmLink" class="bm">⭳ 유통손익 가져오기</a>
+        </div>
+        <p class="muted small" style="margin:8px 0 0">어드민의 엑셀 다운로드 기능으로 6개 파일(전체/상부 × 일반/추가/환수)을 만들어 이 창으로 바로 넘깁니다. 파일은 브라우저 안에서만 계산되고 서버에는 집계 숫자만 저장됩니다. 팝업이 막히면 workline.kr 팝업을 허용하세요. 엑셀 파일을 직접 올려도 됩니다.</p>
+      </div>
+      <div class="card">
         <div class="row gap">
           <label class="inline">대상월 <input type="month" id="period"></label>
           <span class="muted small">일반·추가 = 개통일이 이 달인 건 / 환수 = 정산예정일이 이 달인 건만 계산합니다</span>

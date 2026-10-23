@@ -38,6 +38,7 @@ button.primary { background: var(--brand); border-color: var(--brand); color: #f
 button.ghost:hover:not(:disabled) { background: var(--head); }
 button.link { border: 0; background: none; color: var(--brand); padding: 0; }
 button.danger { color: var(--neg); }
+a.bm { display: inline-block; padding: 9px 16px; border-radius: 8px; background: var(--brand-weak); color: var(--brand); font-weight: 700; text-decoration: none; border: 1px dashed var(--brand); cursor: grab; white-space: nowrap; }
 .tabs { display: flex; gap: 4px; margin-bottom: 14px; border-bottom: 1px solid var(--line); }
 .tab { border: 0; background: none; border-radius: 0; padding: 10px 14px; color: var(--muted); border-bottom: 2px solid transparent; }
 .tab.active { color: var(--brand); border-bottom-color: var(--brand); font-weight: 700; }
