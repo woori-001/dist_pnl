@@ -25,7 +25,20 @@ function ask(msg) {
     $('modalYes').onclick = () => done(true); $('modalNo').onclick = () => done(false);
   });
 }
-function show(view) { for (const v of ['viewLogin', 'viewDenied', 'viewApp']) $(v).hidden = v !== view; }
+function show(view) {
+  for (const v of ['viewLogin', 'viewDenied', 'viewApp']) $(v).hidden = v !== view;
+  $('nav').hidden = view !== 'viewApp';
+  $('bmCard').hidden = view !== 'viewApp' || location.hash.includes('admin-import');
+  if (view === 'viewLogin') setTitle('유통 손익매출 계산기', '로그인하면 계산·저장할 수 있어요');
+  if (view === 'viewApp') setTitle(...PAGE[currentTab]);
+}
+const PAGE = {
+  calc: ['손익매출 계산하기', '어드민 가져오기 버튼이나 엑셀로 대상월 매출을 계산해요 · 매출 = 상부(B) − 전체(A) − 직접지급사은품'],
+  history: ['월별 내역', '저장한 가정산·확정 회차를 월별로 모아 봐요'],
+  rules: ['계산 기준', '대상 상부점·협력점, 월 귀속, 항목 구분과 산식'],
+};
+let currentTab = 'calc';
+function setTitle(t, sub) { $('pageTitle').textContent = t; $('pageSub').textContent = sub; }
 
 // ---------- 로그인 ----------
 async function boot() {
@@ -35,7 +48,7 @@ async function boot() {
 }
 async function onSession(session) {
   if (!session) { $('who').hidden = true; show('viewLogin'); return; }
-  $('who').hidden = false; $('whoEmail').textContent = session.user.email;
+  $('who').hidden = false; $('whoEmail').textContent = session.user.email; $('whoEmail').title = session.user.email; $('ruleVer').textContent = RULES.version;
   const { data, error } = await sb.from('dist_pnl_members').select('email').limit(1);
   if (error || !data?.length) { show('viewDenied'); return; }
   show('viewApp');
@@ -51,9 +64,11 @@ $('formLogin').addEventListener('submit', async e => {
 $('btnLogout').onclick = async () => { await sb.auth.signOut(); onSession(null); };
 
 // ---------- 탭 ----------
-document.querySelectorAll('.tab').forEach(b => b.onclick = () => {
-  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === b));
+document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
+  currentTab = b.dataset.tab;
+  document.querySelectorAll('#nav button').forEach(x => x.classList.toggle('on', x === b));
   document.querySelectorAll('.pane').forEach(p => p.hidden = p.id !== 'pane-' + b.dataset.tab);
+  setTitle(...PAGE[currentTab]);
   if (b.dataset.tab === 'history') loadRuns();
 });
 
@@ -92,21 +107,47 @@ function renderFiles() {
       <td class="n">${won(sum)}</td><td>${ok ? '<span class="pill ok">합계 일치</span>' : '<span class="pill warn">합계 불일치</span>'}</td>
       <td><button class="link danger" data-rm="${i}">빼기</button></td></tr>`;
   }).join('');
-  $('fileList').innerHTML = `<table class="files"><tr><th>구분</th><th>파일</th><th>정산종류별 건수</th><th>정산금액 합계</th><th>점검</th><th></th></tr>${rows}</table>`;
+  $('fileList').innerHTML = `<div class="tbl-wrap"><table class="files"><tr><th>구분</th><th>파일</th><th>정산종류별 건수</th><th>정산금액 합계</th><th>점검</th><th></th></tr>${rows}</table></div>`;
   $('fileList').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { state.files.splice(+b.dataset.rm, 1); state.result = null; $('calcResult').hidden = true; renderFiles(); });
 }
 
 // ---------- 어드민에서 바로 가져오기 (북마클릿 ↔ 이 창 postMessage) ----------
 const ADMIN_ORIGIN = 'https://workline.kr';
 const CALC_URL = location.origin + location.pathname.replace(/index\.html$/, '');
-let pendingAdmin = null;
+let pendingAdmin = null, importDone = false;
+function adminWait(title, msg, opts = {}) {
+  $('adminWait').hidden = false;
+  $('adminWait').classList.toggle('err', !!opts.error);
+  $('adminSpin').hidden = !!opts.done || !!opts.error;
+  if (title) $('adminWaitTitle').textContent = title;
+  if (msg !== undefined) $('adminWaitMsg').textContent = msg;
+}
+let waitTimer = null;
+function enterImportMode() {
+  if (!location.hash.includes('admin-import')) return;
+  importDone = false;
+  $('bmCard').hidden = true; $('uploadCard').hidden = true; $('calcResult').hidden = true;
+  adminWait('어드민에서 데이터를 받는 중이에요', '어드민 창에서 엑셀 6개를 만들고 있어요. 1~2분 걸려요. 어드민 창을 닫지 마세요.');
+  clearTimeout(waitTimer);
+  waitTimer = setTimeout(() => adminWait('아직 데이터가 오지 않았어요', '어드민 창의 작은 창에 오류가 떠 있는지 확인해 주세요. 엑셀을 직접 올려도 됩니다.', { error: true }) || ($('uploadCard').hidden = false), 4 * 60 * 1000);
+}
 function announceReady() {
+  enterImportMode();
   if (window.opener && location.hash.includes('admin-import')) {
     try { window.opener.postMessage({ type: 'dist-pnl-calc-ready' }, ADMIN_ORIGIN); } catch { /* 어드민 창이 닫힘 */ }
   }
 }
 window.addEventListener('message', e => {
-  if (e.origin !== ADMIN_ORIGIN || !e.data || e.data.type !== 'dist-pnl-admin-files') return; // 어드민 창에서 온 것만 받음
+  if (e.origin !== ADMIN_ORIGIN || !e.data) return; // 어드민 창에서 온 것만 받음
+  if (e.data.type === 'dist-pnl-progress') {
+    if (importDone) return; // 계산이 끝난 뒤 오는 안내는 무시
+    clearTimeout(waitTimer);
+    if (e.data.error) { adminWait('어드민에서 가져오지 못했어요', String(e.data.text || ''), { error: true }); $('uploadCard').hidden = false; }
+    else adminWait('어드민에서 데이터를 받는 중이에요', String(e.data.text || ''));
+    return;
+  }
+  if (e.data.type !== 'dist-pnl-admin-files') return;
+  clearTimeout(waitTimer); importDone = true;
   const { period, files } = e.data;
   if (!/^\d{4}-\d{2}$/.test(period) || !Array.isArray(files)) return;
   const parsed = [], errors = [];
@@ -118,6 +159,7 @@ window.addEventListener('message', e => {
     } catch (err) { errors.push(err.message); }
   }
   pendingAdmin = { period, pulledAt: e.data.pulledAt, files: parsed, errors };
+  if ($('viewApp').hidden) adminWait('데이터를 다 받았어요', '로그인하면 바로 계산돼요.', { done: true });
   applyAdmin();
 });
 window.addEventListener('hashchange', announceReady);
@@ -125,7 +167,8 @@ function applyAdmin() {
   if (!pendingAdmin || $('viewApp').hidden) return;
   const { period, files, pulledAt, errors } = pendingAdmin; pendingAdmin = null;
   if (errors.length) errors.forEach(m => toast(m));
-  document.querySelector('.tab[data-tab=calc]').click();
+  $('adminWait').hidden = true; $('uploadCard').hidden = false;
+  document.querySelector('#nav button[data-tab=calc]').click();
   state.files = files; $('period').value = period;
   renderFiles();
   $('btnCalc').click();
@@ -200,21 +243,23 @@ const LINES = [
 ];
 function renderSummary(summary, title) {
   const s = summary.segments;
-  const kpi = SEGMENTS.map(k => `<div class="kpi"><div class="k">${k}</div><div class="v">${won(s[k].REV)}</div></div>`).join('')
-    + `<div class="kpi total"><div class="k">유통사업부 합계</div><div class="v">${won(summary.total.REV)}</div></div>`;
+  const kv = v => `${Math.round(v || 0).toLocaleString('ko-KR')}<small>원</small>`;
+  const kpi = SEGMENTS.map(k => `<div class="kpi"><div class="kpi-label">${k}</div><div class="kpi-value">${kv(s[k].REV)}</div>
+      <div class="kpi-note">B ${Math.round(s[k].B).toLocaleString('ko-KR')} · A ${Math.round(s[k].A).toLocaleString('ko-KR')}</div></div>`).join('')
+    + `<div class="kpi hot"><div class="kpi-label">유통사업부 합계</div><div class="kpi-value">${kv(summary.total.REV)}</div><span class="tag">매출 = B − A − 사은품</span></div>`;
   const cards = SEGMENTS.map(k => {
     const t = s[k];
     const rows = LINES.filter(l => !(l[4] === 'code' && k === '유통이관')).map(([cls, lab, key, sign = 1]) =>
       cls === 'sec' ? `<tr class="sec"><td colspan="2">${lab}</td></tr>`
         : `<tr class="${cls}"><td>${lab}</td><td class="n">${won(sign * t[key])}</td></tr>`).join('');
-    return `<div class="card"><h3>${SEG_TITLE[k]}</h3><table class="sum">${rows}</table></div>`;
+    return `<div class="seg-card"><h3>${SEG_TITLE[k]}</h3><table class="sum">${rows}</table></div>`;
   }).join('');
-  return `<div class="card"><h3>${esc(title)} 매출 요약</h3><div class="kpis">${kpi}</div><p class="muted small">단위: 원 · 매출 = 상부(B) − 전체(A) − 직접지급사은품</p></div><div class="segs">${cards}</div>`;
+  return `<div class="kpis">${kpi}</div><div class="panel"><div class="panel-head"><div><h2>${esc(title)} 구분별 상세</h2><p>단위: 원 · 전체정산(우리가 준 돈)과 상부정산(우리가 받은 돈)</p></div></div><div class="segs">${cards}</div></div>`;
 }
 function renderUpper(rows) {
   const tr = rows.map(r => `<tr><td>${r.segment}</td><td>${esc(r.upper_name)}</td><td class="n">${r.cntUp.toLocaleString()}</td><td class="n">${won(r.B)}</td>
     <td class="n">${r.cntDn.toLocaleString()}</td><td class="n">${won(r.A)}</td><td class="n">${won(r.GIFT)}</td><td class="n"><b>${won(r.REV)}</b></td></tr>`).join('');
-  return `<div class="card"><h3>상부점별 내역 (수기 대조용)</h3><div class="scroll"><table class="grid">
+  return `<div class="panel"><div class="panel-head"><div><h2>상부점별 내역</h2><p>수기 계산과 대조할 때 쓰세요</p></div></div><div class="tbl-wrap"><table class="grid">
     <tr><th>구분</th><th>상부점</th><th class="n">상부 건수</th><th class="n">상부 B</th><th class="n">전체 건수</th><th class="n">전체 A</th><th class="n">직접지급사은품</th><th class="n">매출</th></tr>${tr}</table></div></div>`;
 }
 
@@ -225,7 +270,7 @@ async function loadRuns() {
     .select('id, period, status, note, files, summary, rules, created_by, created_at, confirmed_by, confirmed_at')
     .order('period', { ascending: false }).order('created_at', { ascending: false });
   if (error) { toast('불러오기 실패: ' + error.message); return; }
-  state.runs = data; renderMonths();
+  state.runs = data; $('runCount').textContent = `${data.length}건`; renderMonths();
 }
 function repRun(period) {
   const list = state.runs.filter(r => ym(r.period) === period);
@@ -257,13 +302,13 @@ async function renderDetail() {
   const runRows = list.map(r => `<tr class="click ${r.id === run.id ? 'sel' : ''}" data-id="${r.id}"><td><span class="pill ${r.status}">${r.status}</span></td>
     <td class="muted small">${new Date(r.created_at).toLocaleString('ko-KR')}</td><td class="small">${esc(r.created_by || '')}</td>
     <td class="n">${won(r.summary.total.REV)}</td><td class="small">${esc(r.note || '')}</td></tr>`).join('');
-  $('monthDetail').innerHTML = `<div class="card"><div class="row between wrap gap"><h3>${monthLabel(p)} 회차</h3>
+  $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)} 회차</h2><p>회차를 누르면 그 회차 숫자로 바뀌어요</p></div>
       <div class="row gap wrap">
-        ${run.status === '확정' ? '<button id="btnUnconfirm" class="ghost">가정산으로 되돌리기</button>' : '<button id="btnConfirm" class="primary">이 회차를 확정으로</button>'}
-        <button id="btnExportRun" class="ghost">엑셀 다운로드</button><button id="btnDelRun" class="ghost danger">회차 삭제</button></div></div>
-      <div class="scroll"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th><th class="n">합계 매출</th><th>메모</th></tr>${runRows}</table></div>
-      <p class="muted small">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
-    </div><div id="runBody"><div class="card muted">불러오는 중…</div></div>`;
+        ${run.status === '확정' ? '<button id="btnUnconfirm">가정산으로 되돌리기</button>' : '<button id="btnConfirm" class="primary">이 회차를 확정으로</button>'}
+        <button id="btnExportRun">엑셀 다운로드</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
+      <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th><th class="n">합계 매출</th><th>메모</th></tr>${runRows}</table></div>
+      <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
+    </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
   $('monthDetail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selRun = tr.dataset.id; renderDetail(); });
   const setStatus = async st => {
     if (st === '확정' && list.some(x => x.status === '확정' && x.id !== run.id) && !await ask('이미 확정된 회차가 있습니다. 이 회차를 확정하면 기존 확정은 가정산으로 바뀝니다. 계속할까요?')) return;
@@ -280,7 +325,7 @@ async function renderDetail() {
     toast('삭제했습니다'); state.selRun = null; await loadRuns();
   };
   const { data: lines, error } = await sb.from('dist_pnl_lines').select('*').eq('run_id', run.id);
-  if (error) { $('runBody').innerHTML = `<div class="card err">${esc(error.message)}</div>`; return; }
+  if (error) { $('runBody').innerHTML = `<div class="panel err">${esc(error.message)}</div>`; return; }
   const summary = summarize(lines);
   $('runBody').innerHTML = renderSummary(summary, `${monthLabel(p)} (${run.status})`) + renderUpper(byUpper(lines));
   $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, run.status);

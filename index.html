@@ -4,112 +4,132 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>유통 손익매출 계산기</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
 <link rel="stylesheet" href="src/styles.css">
 <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-<header class="top">
-  <div class="brand">유통 손익매출 계산기 <span class="sub">유통사업부</span></div>
-  <div class="who" id="who" hidden><span id="whoEmail"></span><button class="link" id="btnLogout">로그아웃</button></div>
-</header>
+<div class="app">
+  <!-- 사이드바 -->
+  <aside class="side">
+    <div class="brand">
+      <div class="brand-mark"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3d6ef2" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></div>
+      <div><div class="brand-name">유통 손익매출</div><div class="brand-sub">유통사업부 계산기</div></div>
+    </div>
 
-<main>
-  <!-- 로그인 -->
-  <section id="viewLogin" class="card narrow" hidden>
-    <h2>로그인</h2>
-    <p class="muted">회사 Supabase 계정(이메일·비밀번호)으로 로그인하세요.</p>
-    <form id="formLogin" class="stack">
-      <label>이메일<input type="email" id="loginEmail" autocomplete="username" required></label>
-      <label>비밀번호<input type="password" id="loginPw" autocomplete="current-password" required></label>
-      <button class="primary" type="submit">로그인</button>
-      <p class="err" id="loginErr"></p>
-    </form>
-  </section>
-
-  <section id="viewDenied" class="card narrow" hidden>
-    <h2>사용 권한이 없습니다</h2>
-    <p>로그인은 되었지만 이 계정은 계산기 사용 명단(<code>dist_pnl_members</code>)에 없습니다. 관리자에게 이메일 등록을 요청하세요.</p>
-  </section>
-
-  <!-- 앱 -->
-  <section id="viewApp" hidden>
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="calc">계산하기</button>
-      <button class="tab" data-tab="history">월별 내역</button>
-      <button class="tab" data-tab="rules">계산 기준</button>
+    <nav class="nav" id="nav" hidden>
+      <button class="on" data-tab="calc"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h2M14 10h2M8 14h2M14 14h2M8 18h2M14 18h2"/></svg></span><span><b>계산하기</b><small>어드민·엑셀로 월 계산</small></span></button>
+      <button data-tab="history"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span><span><b>월별 내역</b><small>가정산·확정 기록</small></span></button>
+      <button data-tab="rules"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M8 7h8M8 11h6"/></svg></span><span><b>계산 기준</b><small>대상·항목·산식</small></span></button>
     </nav>
 
-    <!-- 계산하기 -->
-    <div class="pane" id="pane-calc">
-      <div class="card">
-        <div class="row between wrap gap">
-          <div>
-            <h3>어드민에서 바로 가져오기</h3>
-            <p class="muted small" style="margin:0">처음 한 번: 오른쪽 버튼을 브라우저 <b>즐겨찾기(북마크) 막대로 끌어다 놓기</b> → 이후 매달: 어드민(workline.kr) 로그인 → 즐겨찾기 <b>유통손익 가져오기</b> 클릭 → 대상월 고르고 가져오기 → 이 계산기 창이 열리며 자동 계산</p>
-          </div>
-          <a id="bmLink" class="bm">⭳ 유통손익 가져오기</a>
-        </div>
-        <p class="muted small" style="margin:8px 0 0">어드민의 엑셀 다운로드 기능으로 6개 파일(전체/상부 × 일반[개통일] / 추가·환수[정산예정일])을 만들어 이 창으로 바로 넘깁니다. 파일은 브라우저 안에서만 계산되고 서버에는 집계 숫자만 저장됩니다. 팝업이 막히면 workline.kr 팝업을 허용하세요. 엑셀 파일을 직접 올려도 됩니다.</p>
-      </div>
-      <div class="card">
-        <div class="row gap">
-          <label class="inline">대상월 <input type="month" id="period"></label>
-          <span class="muted small">일반 = 개통일이 이 달인 건 / 추가·환수 = 정산예정일이 이 달인 건만 계산합니다</span>
-        </div>
-        <div id="drop" class="drop" tabindex="0">
-          <strong>어드민에서 받은 엑셀을 여기에 끌어다 놓으세요</strong>
-          <span class="muted small">전체정산관리 · 상부정산관리 (일반·추가 / 환수) — 보통 4개 파일, 클릭해서 고를 수도 있어요</span>
-          <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
-        </div>
-        <div id="fileList"></div>
-        <div class="row gap end">
-          <button id="btnClear" class="ghost" disabled>파일 비우기</button>
-          <button id="btnCalc" class="primary" disabled>계산하기</button>
-        </div>
-      </div>
+    <div class="divider"></div>
 
-      <div id="calcResult" hidden>
-        <div id="calcChecks"></div>
-        <div id="calcSummary"></div>
-        <div class="card">
-          <h3>저장</h3>
-          <div class="row gap wrap">
-            <div class="seg" role="radiogroup">
-              <label><input type="radio" name="status" value="가정산" checked><span>가정산</span></label>
-              <label><input type="radio" name="status" value="확정"><span>확정</span></label>
+    <div class="bmbox" id="bmCard" hidden>
+      <div class="bm-title">어드민 가져오기 버튼</div>
+      <a id="bmLink" class="bm" draggable="true">⭳ 유통손익 가져오기</a>
+      <div class="bm-help">이 버튼을 <b>북마크 줄로 끌어다 놓고</b>, 어드민(workline.kr) 화면에서 누르세요.</div>
+    </div>
+
+    <div class="meta" id="who" hidden>
+      <div><span>로그인</span><b id="whoEmail"></b></div>
+      <div><span>기준 버전</span><b id="ruleVer"></b></div>
+      <div><span>저장 회차</span><b id="runCount">-</b></div>
+      <button class="side-link" id="btnLogout">로그아웃</button>
+    </div>
+
+    <div class="side-foot">고객 개인정보는 브라우저 안에서만 계산되고, 서버에는 집계 숫자만 저장돼요.</div>
+  </aside>
+
+  <!-- 본문 -->
+  <main class="main">
+    <div class="top">
+      <div><h1 id="pageTitle">유통 손익매출 계산기</h1><p id="pageSub">매출 = 상부(B) − 전체(A) − 직접지급사은품</p></div>
+      <div class="actions" id="topActions"></div>
+    </div>
+
+    <!-- 어드민 가져오기로 열렸을 때 진행 상황 -->
+    <section id="adminWait" class="panel wait" hidden>
+      <div class="row gap"><span class="spin" id="adminSpin"></span><div><b id="adminWaitTitle">어드민에서 데이터를 받는 중이에요</b>
+      <div class="small muted" id="adminWaitMsg">어드민 창에서 엑셀 6개를 만들고 있어요. 1~2분 걸려요. 어드민 창을 닫지 마세요.</div></div></div>
+    </section>
+
+    <!-- 로그인 -->
+    <section id="viewLogin" class="panel narrow" hidden>
+      <div class="panel-head"><div><h2>로그인</h2><p>회사 Supabase 계정(이메일·비밀번호)으로 로그인하세요.</p></div></div>
+      <form id="formLogin" class="stack">
+        <label>이메일<input type="email" id="loginEmail" autocomplete="username" required></label>
+        <label>비밀번호<input type="password" id="loginPw" autocomplete="current-password" required></label>
+        <button class="primary" type="submit">로그인</button>
+        <p class="err" id="loginErr"></p>
+      </form>
+    </section>
+
+    <section id="viewDenied" class="panel narrow" hidden>
+      <div class="panel-head"><div><h2>사용 권한이 없습니다</h2><p>로그인은 되었지만 이 계정은 계산기 사용 명단(<code>dist_pnl_members</code>)에 없습니다. 관리자에게 이메일 등록을 요청하세요.</p></div></div>
+    </section>
+
+    <!-- 앱 -->
+    <section id="viewApp" class="stack-lg" hidden>
+      <!-- 계산하기 -->
+      <div class="pane stack-lg" id="pane-calc">
+        <div class="panel" id="uploadCard">
+          <div class="panel-head">
+            <div><h2>엑셀로 계산하기</h2><p>어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.</p></div>
+            <label class="inline">대상월 <input type="month" id="period"></label>
+          </div>
+          <div id="drop" class="drop" tabindex="0">
+            <div class="drop-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></div>
+            <strong>엑셀을 여기에 끌어다 놓거나 클릭해서 고르세요</strong>
+            <span class="muted small">일반 = 개통일 기준 파일 · 추가·환수 = 정산예정일 기준 파일 (전체정산·상부정산 각각)</span>
+            <input type="file" id="fileInput" accept=".xlsx,.xls" multiple hidden>
+          </div>
+          <div id="fileList"></div>
+          <div class="row gap end">
+            <button id="btnClear" disabled>파일 비우기</button>
+            <button id="btnCalc" class="primary" disabled>계산하기</button>
+          </div>
+        </div>
+
+        <div id="calcResult" class="stack-lg" hidden>
+          <div id="calcChecks"></div>
+          <div id="calcSummary" class="stack-lg"></div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>저장</h2><p>같은 달을 여러 번 저장할 수 있고, 확정은 한 달에 1건만 남아요 (새로 확정하면 이전 확정은 가정산으로 바뀜).</p></div></div>
+            <div class="row gap wrap">
+              <div class="seg" role="radiogroup">
+                <label><input type="radio" name="status" value="가정산" checked><span>가정산</span></label>
+                <label><input type="radio" name="status" value="확정"><span>확정</span></label>
+              </div>
+              <input type="text" id="note" placeholder="메모 (예: 9월 SKY 본사정산 미입금 상태)" class="grow">
+              <button id="btnExportCalc">엑셀 다운로드</button>
+              <button id="btnSave" class="primary">저장</button>
             </div>
-            <input type="text" id="note" placeholder="메모 (예: 9월 SKY 본사정산 미입금 상태)" class="grow">
-            <button id="btnExportCalc" class="ghost">엑셀 다운로드</button>
-            <button id="btnSave" class="primary">저장</button>
+            <p id="saveMsg" class="small"></p>
           </div>
-          <p class="muted small">같은 달을 여러 번 저장할 수 있고, 확정은 한 달에 1건만 남습니다(새로 확정하면 이전 확정은 가정산으로 바뀜).</p>
-          <p id="saveMsg" class="small"></p>
+          <div id="calcUpper"></div>
         </div>
-        <div id="calcUpper"></div>
       </div>
-    </div>
 
-    <!-- 월별 내역 -->
-    <div class="pane" id="pane-history" hidden>
-      <div class="card">
-        <div class="row between"><h3>월별 매출</h3><button id="btnReload" class="ghost">새로고침</button></div>
-        <p class="muted small">한 달에 확정 회차가 있으면 확정을, 없으면 가장 최근 가정산을 보여줍니다.</p>
-        <div class="scroll"><table class="grid" id="tblMonths"></table></div>
+      <!-- 월별 내역 -->
+      <div class="pane stack-lg" id="pane-history" hidden>
+        <div class="panel">
+          <div class="panel-head"><div><h2>월별 매출</h2><p>한 달에 확정 회차가 있으면 확정을, 없으면 가장 최근 가정산을 보여줘요. 행을 누르면 상세가 열려요.</p></div><button id="btnReload">새로고침</button></div>
+          <div class="tbl-wrap"><table class="grid" id="tblMonths"></table></div>
+        </div>
+        <div id="monthDetail" class="stack-lg"></div>
       </div>
-      <div id="monthDetail"></div>
-    </div>
 
-    <!-- 기준 -->
-    <div class="pane" id="pane-rules" hidden>
-      <div class="card prose" id="rulesBox"></div>
-    </div>
-  </section>
-</main>
+      <!-- 기준 -->
+      <div class="pane" id="pane-rules" hidden>
+        <div class="panel prose" id="rulesBox"></div>
+      </div>
+    </section>
+  </main>
+</div>
 
 <div id="toast" class="toast" hidden></div>
-<div id="modal" class="modal" hidden><div class="modal-box"><p id="modalMsg"></p><div class="row gap end"><button id="modalNo" class="ghost">취소</button><button id="modalYes" class="primary">확인</button></div></div></div>
+<div id="modal" class="modal" hidden><div class="modal-box"><p id="modalMsg"></p><div class="row gap end"><button id="modalNo">취소</button><button id="modalYes" class="primary">확인</button></div></div></div>
 
 <script type="module" src="src/app.js"></script>
 </body>

@@ -74,7 +74,11 @@
     </div>`;
   document.body.appendChild(box);
   const goBtn = box.querySelector('[data-go]');
-  const msg = (t, err) => { const m = box.querySelector('[data-msg]'); m.textContent = t; m.style.color = err ? '#c8322b' : '#1d2229'; };
+  const msg = (t, err) => {
+    const m = box.querySelector('[data-msg]'); m.textContent = t; m.style.color = err ? '#c8322b' : '#1d2229';
+    // 계산기 창에도 진행 상황 표시
+    if (calcWin && !calcWin.closed) { try { calcWin.postMessage({ type: 'dist-pnl-progress', text: t, error: !!err }, CALC_ORIGIN); } catch { /* 아직 로딩 중 */ } }
+  };
   let busy = false, calcWin = null, calcReady = false, payload = null;
 
   function send() {
