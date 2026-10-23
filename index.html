@@ -109,12 +109,8 @@
           <div id="calcChecks"></div>
           <div id="calcSummary" class="stack-lg"></div>
           <div class="panel">
-            <div class="panel-head"><div><h2>저장</h2><p>같은 달을 여러 번 저장할 수 있고, 확정은 한 달에 1건만 남아요 (새로 확정하면 이전 확정은 가정산으로 바뀜).</p></div></div>
+            <div class="panel-head"><div><h2>저장</h2><p>가정산/확정은 위 구분 타일에서 구분별로 정해요. 같은 달을 여러 번 저장할 수 있고, 구분별 확정은 한 달에 1건만 남아요 (새로 확정하면 이전 확정은 가정산으로 바뀜).</p></div></div>
             <div class="row gap wrap">
-              <div class="seg" role="radiogroup">
-                <label><input type="radio" name="status" value="가정산" checked><span>가정산</span></label>
-                <label><input type="radio" name="status" value="확정"><span>확정</span></label>
-              </div>
               <input type="text" id="note" placeholder="메모 (예: 9월 SKY 본사정산 미입금 상태)" class="grow">
               <button id="btnExportCalc">엑셀 다운로드</button>
               <button id="btnSave" class="primary">저장</button>
@@ -133,7 +129,7 @@
             <div class="ystat" id="yStat"></div>
           </div>
           <div class="cal" id="calGrid"></div>
-          <p class="muted small" style="margin:0">달을 누르면 아래에 그 달 내역이 열려요. 칸의 숫자는 유통이관 매출(만원)이고, 마우스를 올리면 4개 구분이 모두 보여요. 확정이 있으면 확정, 없으면 최근 가정산 기준이에요.</p>
+          <p class="muted small" style="margin:0">달을 누르면 아래에 그 달 내역이 열려요. 칸의 숫자는 유통이관 매출(만원), 오른쪽 위 점 4개는 구분별 상태예요(유통이관·SKB·SKY·매직 순, 초록 = 확정, 주황 = 가정산). 구분마다 확정 회차가 있으면 확정, 없으면 최근 가정산 기준이고, 마우스를 올리면 4개 구분이 모두 보여요.</p>
         </div>
         <div id="monthDetail" class="stack-lg"></div>
       </div>
