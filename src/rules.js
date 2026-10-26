@@ -42,6 +42,9 @@ export const RULES = {
     { name: '유심 상품 SKYLIFE', from: '2026-01-01', amount: 50000 },
   ],
 
+  // 직접지급사은품: 사은품지급처가 아래가 아닌 건만 회사 지출로 봄 (유치자지급 = 협력점이 직접 지급)
+  partnerPaidGiftLabel: '유치자지급',
+
   // 상부정산 항목 구분 (상품명 기준)
   mgmtProductKeyword: '_관리',     // a-1 관리수수료
   settleProductKeyword: '정산관련', // a-2 정산관련

@@ -5,7 +5,7 @@ const SIDE_BY_SHEET = { '상부정산관리': '상부', '전체정산관리': '�
 const NEED = ['정산종류', '협력점', '상부점', '상품명', '개통일', '정산예정일', '정산금액',
   '약정금액', '수납', '번들수수료', '동판수수료'];
 const DEDUCT = ['사은품', '물류', '쿠폰', '선납', '할인탭', '미비서류', '기타'];
-const OPTIONAL = ['접수일', '가입서비스', '상품옵션', '셋트유형'];
+const OPTIONAL = ['접수일', '가입서비스', '상품옵션', '셋트유형', '사은품지급처', '지급완료'];
 
 const num = v => (v === null || v === undefined || v === '') ? 0 : Math.round(Number(String(v).replace(/,/g, '')) || 0);
 const str = v => (v === null || v === undefined) ? '' : String(v).trim();
@@ -45,6 +45,8 @@ export function parseWorkbook(XLSX, data, fileName) {
       svc: idx['가입서비스'] === undefined ? '' : str(a[idx['가입서비스']]),
       opt: idx['상품옵션'] === undefined ? '' : str(a[idx['상품옵션']]),
       set: idx['셋트유형'] === undefined ? '' : str(a[idx['셋트유형']]),
+      giftPayer: idx['사은품지급처'] === undefined ? '' : str(a[idx['사은품지급처']]),
+      giftDone: idx['지급완료'] === undefined ? '' : str(a[idx['지급완료']]),
     });
   }
   return { fileName, side, rows, fileTotal };
@@ -116,8 +118,12 @@ export function compute(parsed, period) {
       const key = [seg, r.upper, f.side, item, jj ? '자점' : '외부', included].join('|');
       let l = map.get(key);
       if (!l) { l = { segment: seg, upper_name: r.upper, side: f.side, item, partner_type: jj ? '자점' : '외부', included,
-        cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0, jj_fee: 0 }; map.set(key, l); }
+        cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0, jj_fee: 0, direct_gift: 0 }; map.set(key, l); }
       l.cnt++; l.amount += r.amount; l.gift_cash += gift.c; l.gift_goods += gift.g; l.gift_coupon += gift.k;
+      // 직접지급사은품: 회사가 고객에게 준 것만 (유치자지급 = 협력점이 직접 지급 → 제외)
+      const partnerPaid = (r.giftPayer || '').includes(RULES.partnerPaidGiftLabel);
+      if (!partnerPaid) l.direct_gift += gift.c + gift.g + gift.k;
+      if (partnerPaid && (gift.c + gift.g + gift.k) && r.giftDone) checks.partnerPaidDone = (checks.partnerPaidDone || 0) + 1;
       // 자점운영비: 코드 · 전체정산 · 자점(유통·영업정산 제외) · 일반 건
       if (seg !== RULES.transferSegment && f.side === '전체' && jj && r.kind === '일반'
           && !RULES.jajeomFeeExcludePrefixes.some(p => r.partner.trim().startsWith(p))) {
@@ -138,6 +144,7 @@ export function compute(parsed, period) {
   for (const s of ['상부', '전체']) if (!sides.has(s)) checks.warnings.push(`${s}정산 파일이 없습니다`);
   const hasRefund = s => parsed.some(f => f.side === s && f.rows.some(r => r.kind === '환수'));
   for (const s of ['상부', '전체']) if (sides.has(s) && !hasRefund(s)) checks.warnings.push(`${s}정산 환수 건이 하나도 없습니다 (환수 파일 확인)`);
+  if (checks.partnerPaidDone) checks.warnings.push(`사은품지급처가 '유치자지급'인데 지급완료일이 있는 건 ${checks.partnerPaidDone}건 — 확인이 필요해요 (직접지급사은품에서는 제외됨)`);
   if (checks.formulaMismatch) checks.warnings.push(`정산금액 산식이 맞지 않는 행 ${checks.formulaMismatch}건`);
   return { lines: [...map.values()], checks };
 }
@@ -151,6 +158,7 @@ export function summarize(lines) {
     const t = seg[l.segment]; if (!t) continue;
     const gifts = l.gift_cash + l.gift_goods + l.gift_coupon;
     t.JF += l.jj_fee || 0;
+    if (l.side === '전체') t.GD += (l.direct_gift == null ? l.gift_cash + l.gift_goods + l.gift_coupon : l.direct_gift);
     if (l.side === '전체') {
       if (l.item === '환수') t.D_F += -l.amount;
       else {
@@ -174,13 +182,13 @@ export function summarize(lines) {
     t.BA = t.B - t.A;
     t.GIFT = t.D_B + t.D_C + t.D_D;
     // 매출 = 상부 최종(B) − 자점운영비(코드) − 전체 최종(A) − 직접지급사은품(회사가 고객에게 준 현금·물류·쿠폰)
-    t.REV = t.BA - t.JF - t.GIFT;
+    t.REV = t.BA - t.JF - t.GD;
     total.REV += t.REV;
   }
   return { segments: seg, total };
 }
 function blank() {
-  return { JF: 0, D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
+  return { JF: 0, GD: 0, D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
 }
 
 /** 상부점별 내역 (점검용) */
@@ -191,9 +199,10 @@ export function byUpper(lines) {
     const k = l.segment + '|' + l.upper_name;
     let r = m.get(k); if (!r) { r = { segment: l.segment, upper_name: l.upper_name, B: 0, A: 0, GIFT: 0, JF: 0, cntUp: 0, cntDn: 0 }; m.set(k, r); }
     r.JF += l.jj_fee || 0;
+    if (l.side === '전체') r.GD = (r.GD || 0) + (l.direct_gift == null ? l.gift_cash + l.gift_goods + l.gift_coupon : l.direct_gift);
     if (l.side === '상부') { r.B += l.amount; r.cntUp += l.cnt; }
     else { r.A += l.amount; r.cntDn += l.cnt; r.GIFT += l.gift_cash + l.gift_goods + l.gift_coupon; }
   }
-  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A - r.JF - r.GIFT }))
+  return [...m.values()].map(r => ({ ...r, GD: r.GD || 0, REV: r.B - r.A - r.JF - (r.GD || 0) }))
     .sort((a, b) => SEGMENTS.indexOf(a.segment) - SEGMENTS.indexOf(b.segment) || b.REV - a.REV);
 }
