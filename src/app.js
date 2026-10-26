@@ -38,7 +38,7 @@ function show(view) {
   if (view === 'viewApp') setTitle(...PAGE[currentTab]);
 }
 const PAGE = {
-  calc: ['손익매출 계산하기', '어드민 가져오기 버튼이나 엑셀로 대상월 매출을 계산해요 · 매출 = 상부(B) − 전체(A) − 자점운영비(코드)'],
+  calc: ['손익매출 계산하기', '어드민 가져오기 버튼이나 엑셀로 대상월 매출을 계산해요 · 매출 = 상부(B) − 전체(A) − 자점운영비(코드) − 직접지급사은품'],
   history: ['월별 내역', '달력에서 달을 누르면 그 달의 가정산·확정 내역이 열려요'],
 };
 let currentTab = 'calc';
@@ -248,10 +248,11 @@ const LINES = [ // 엑셀 내보내기용 (전체 항목)
   ['b', '최종 정산금액 (B) = (a+a1+a2) − (b+c+d+f)', 'B'],
   ['sec', '매출'],
   ['', '(−) 자점운영비 (코드 · 자점 일반 건)', 'JF', -1, 'code'],
-  ['key', '매출 = B − A − 자점운영비', 'REV'],
+  ['', '(−) 직접지급사은품 (현금+물류+쿠폰)', 'GIFT', -1],
+  ['key', '매출 = B − A − 자점운영비 − 직접지급사은품', 'REV'],
   ['ref', '참고: 자점운영비 (A 중 자점 지급분)', 'JJ', 1, 'code'],
 ];
-const SEG_NOTE = { '유통이관': '이관처 · 자점 제외', 'SKB웨이브넷': '코드 · 자점 포함', 'SKY우리정보': '코드 · 자점 포함', 'SK매직': '코드 · 자점 포함' };
+const SEG_NOTE = { '유통이관': '이관처 · 자점 포함', 'SKB웨이브넷': '코드 · 자점 포함', 'SKY우리정보': '코드 · 자점 포함', 'SK매직': '코드 · 자점 포함' };
 let detailSeg = '유통이관';
 function renderSummary(summary, title, segStatus = blankSt()) {
   const s = summary.segments;
@@ -272,7 +273,8 @@ function renderSummary(summary, title, segStatus = blankSt()) {
       <td class="n">${won(up)}</td><td class="n">${won(dn)}</td><td class="n diff">${won(up - dn)}</td></tr>`).join('')
     + `<tr><th class="grp" colspan="2">환수</th><td class="n">${won(-t.U_F)}</td><td class="n">${won(-t.D_F)}</td><td class="n diff">${won(-t.U_F + t.D_F)}</td></tr>`
     + `<tr><th class="grp" colspan="2">자점운영비</th><td class="n">${won(-t.JF)}</td><td class="n">-</td><td class="n diff">${won(-t.JF)}</td></tr>`
-    + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B - (t.JF || 0))}</td><td class="n">${won(t.A)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
+    + `<tr><th class="grp" colspan="2">직접지급사은품</th><td class="n">-</td><td class="n">${won(t.GIFT)}</td><td class="n diff">${won(-t.GIFT)}</td></tr>`
+    + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B - (t.JF || 0))}</td><td class="n">${won(t.A + t.GIFT)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
   const jj = detailSeg === '유통이관' ? '' : `<p class="muted small" style="margin:0">자점운영비 = 자점 영업팀 '일반' 건의 자점 마진(접수일 기준 금액, 7.유통사업부·0.영업정산 제외) · 참고: 전체정산 중 자점 협력점 지급분 ${won(t.JJ)}원</p>`;
   return `<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${kpi}</div>
     <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg} <span class="pill ${segStatus[detailSeg]}">${segStatus[detailSeg]}</span></h2></div><button type="button" class="small-btn js-snap" data-name="${esc(title)}_${detailSeg}">이미지 저장</button></div>
@@ -369,9 +371,9 @@ document.addEventListener('keydown', e => {
 });
 function renderUpper(rows) {
   const tr = rows.map(r => `<tr><td>${r.segment}</td><td>${esc(r.upper_name)}</td><td class="n">${r.cntUp.toLocaleString()}</td><td class="n">${won(r.B)}</td>
-    <td class="n">${r.cntDn.toLocaleString()}</td><td class="n">${won(r.A)}</td><td class="n">${won(-r.JF)}</td><td class="n"><b>${won(r.REV)}</b></td></tr>`).join('');
+    <td class="n">${r.cntDn.toLocaleString()}</td><td class="n">${won(r.A)}</td><td class="n">${won(-r.JF)}</td><td class="n">${won(-r.GIFT)}</td><td class="n"><b>${won(r.REV)}</b></td></tr>`).join('');
   return `<div class="panel"><div class="panel-head"><div><h2>상부점별 내역</h2><p>수기 계산과 대조할 때 쓰세요</p></div></div><div class="tbl-wrap"><table class="grid">
-    <tr><th>구분</th><th>상부점</th><th class="n">상부 건수</th><th class="n">상부 B</th><th class="n">전체 건수</th><th class="n">전체 A</th><th class="n">자점운영비</th><th class="n">매출</th></tr>${tr}</table></div></div>`;
+    <tr><th>구분</th><th>상부점</th><th class="n">상부 건수</th><th class="n">상부 B</th><th class="n">전체 건수</th><th class="n">전체 A</th><th class="n">자점운영비</th><th class="n">직접지급사은품</th><th class="n">매출</th></tr>${tr}</table></div></div>`;
 }
 
 // ---------- 월별 내역 ----------
@@ -387,7 +389,7 @@ function repRun(period, seg) {
   if (seg) return list.find(r => segSt(r, seg) === '확정') || list[0];
   return list.find(r => r.status === '확정') || list.find(r => SEGMENTS.some(k => segSt(r, k) === '확정')) || list[0];
 }
-const revOf = (run, k) => { const t = run.summary.segments[k]; return t.B - t.A - (t.JF || 0); }; // 저장 시점과 무관하게 B − A − 자점운영비
+const revOf = (run, k) => { const t = run.summary.segments[k]; return t.B - t.A - (t.JF || 0) - ((t.D_B || 0) + (t.D_C || 0) + (t.D_D || 0)); }; // 저장 시점과 무관하게 B − A − 자점운영비 − 직접지급사은품
 const man = v => { const n = Math.round((v || 0) / 1e4); return `${n.toLocaleString('ko-KR')}<small>만</small>`; };
 function renderMonths() {
   const y = state.year;
@@ -456,7 +458,7 @@ async function renderDetail() {
 function exportXlsx(period, summary, lines, segStatus = blankSt()) {
   const wb = XLSX.utils.book_new();
   const s = summary.segments;
-  const aoa = [[`유통사업부 손익매출 ${monthLabel(period)}`], ['단위: 원 · 매출 = B − A − 자점운영비(코드)'], [], ['항목', ...SEGMENTS], ['정산 상태', ...SEGMENTS.map(k => segStatus[k])]];
+  const aoa = [[`유통사업부 손익매출 ${monthLabel(period)}`], ['단위: 원 · 매출 = B − A − 자점운영비(코드) − 직접지급사은품'], [], ['항목', ...SEGMENTS], ['정산 상태', ...SEGMENTS.map(k => segStatus[k])]];
   for (const [cls, lab, key, sign = 1, only] of LINES) {
     if (cls === 'sec') { aoa.push([`[${lab}]`]); continue; }
     const vals = SEGMENTS.map(k => (only === 'code' && k === '유통이관') ? null : sign * s[k][key]);
@@ -464,7 +466,7 @@ function exportXlsx(period, summary, lines, segStatus = blankSt()) {
   }
   const ws1 = XLSX.utils.aoa_to_sheet(aoa); ws1['!cols'] = [{ wch: 42 }, ...SEGMENTS.map(() => ({ wch: 16 }))];
   numFmt(ws1); XLSX.utils.book_append_sheet(wb, ws1, '요약');
-  const up = byUpper(lines).map(r => ({ 구분: r.segment, 상부점: r.upper_name, '상부 건수': r.cntUp, '상부 B': r.B, '전체 건수': r.cntDn, '전체 A': r.A, '자점운영비': r.JF, '매출': r.REV }));
+  const up = byUpper(lines).map(r => ({ 구분: r.segment, 상부점: r.upper_name, '상부 건수': r.cntUp, '상부 B': r.B, '전체 건수': r.cntDn, '전체 A': r.A, '자점운영비': r.JF, '직접지급사은품': r.GIFT, '매출': r.REV }));
   const ws2 = XLSX.utils.json_to_sheet(up); ws2['!cols'] = [{ wch: 14 }, { wch: 34 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 16 }, { wch: 16 }, { wch: 16 }];
   numFmt(ws2); XLSX.utils.book_append_sheet(wb, ws2, '상부점별');
   const raw = lines.map(l => ({ 구분: l.segment, 상부점: l.upper_name, 측: l.side, 항목: l.item, 자점구분: l.partner_type, 포함: l.included ? 'Y' : 'N', 건수: l.cnt, 정산금액: l.amount, 사은품현금: l.gift_cash, 사은품물류: l.gift_goods, 사은품쿠폰: l.gift_coupon, 자점운영비: l.jj_fee || 0 }));

@@ -110,7 +110,7 @@ export function compute(parsed, period) {
       const seg = segmentOf(r.upper);
       if (!seg) { checks.otherDept++; continue; }
       const jj = isJajeom(r.partner);
-      const included = !(seg === RULES.transferSegment && jj);
+      const included = !(RULES.transferExcludeJajeom && seg === RULES.transferSegment && jj);
       const item = itemOf(r);
       const gift = r.kind === '환수' ? { c: 0, g: 0, k: 0 } : { c: r.d['사은품'], g: r.d['물류'], k: r.d['쿠폰'] };
       const key = [seg, r.upper, f.side, item, jj ? '자점' : '외부', included].join('|');
@@ -173,7 +173,8 @@ export function summarize(lines) {
     t.B = (t.U_A + t.U_A1 + t.U_A2) - (t.U_B + t.U_C + t.U_D + t.U_F);
     t.BA = t.B - t.A;
     t.GIFT = t.D_B + t.D_C + t.D_D;
-    t.REV = t.BA - t.JF; // 매출 = 상부 최종(B) − 자점운영비 − 전체 최종(A). 사은품은 A에서 이미 차감
+    // 매출 = 상부 최종(B) − 자점운영비(코드) − 전체 최종(A) − 직접지급사은품(회사가 고객에게 준 현금·물류·쿠폰)
+    t.REV = t.BA - t.JF - t.GIFT;
     total.REV += t.REV;
   }
   return { segments: seg, total };
@@ -193,6 +194,6 @@ export function byUpper(lines) {
     if (l.side === '상부') { r.B += l.amount; r.cntUp += l.cnt; }
     else { r.A += l.amount; r.cntDn += l.cnt; r.GIFT += l.gift_cash + l.gift_goods + l.gift_coupon; }
   }
-  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A - r.JF }))
+  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A - r.JF - r.GIFT }))
     .sort((a, b) => SEGMENTS.indexOf(a.segment) - SEGMENTS.indexOf(b.segment) || b.REV - a.REV);
 }
