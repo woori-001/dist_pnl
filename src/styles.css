@@ -366,3 +366,10 @@ body.snapping .stt button:not(.on) { display: none; }
 body.snapping .stt { background: transparent; }
 .rules .c6 { --c: #f9a8d4; }
 .sum-panel { align-content: start; }
+
+/* 4분류 검산 줄: 코드+외부유통 = 유통+직영영업 */
+.sum-check{display:flex;flex-wrap:wrap;align-items:center;gap:6px 14px;padding:10px 14px;border:1px solid var(--line);border-radius:12px;background:var(--card);font-size:13px}
+.sum-check b{font-variant-numeric:tabular-nums}
+.sum-check .eq{font-weight:700;color:var(--muted)}
+.sum-check .jfnote{margin-left:auto;color:var(--muted);font-size:12px}
+@media (max-width:720px){.sum-check .jfnote{margin-left:0;flex-basis:100%}}

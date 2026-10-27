@@ -1,5 +1,5 @@
 // 손익매출 계산 엔진 — 브라우저와 Node 양쪽에서 동작 (XLSX 객체는 밖에서 넘겨받음)
-import { RULES, SEGMENTS } from './rules.js';
+import { RULES, SEGMENTS, VIEW_FILTER, LEGACY_SEGMENTS } from './rules.js';
 
 const SIDE_BY_SHEET = { '상부정산관리': '상부', '전체정산관리': '전체' };
 const NEED = ['정산종류', '협력점', '상부점', '상품명', '개통일', '정산예정일', '정산금액',
@@ -52,11 +52,12 @@ export function parseWorkbook(XLSX, data, fileName) {
   return { fileName, side, rows, fileTotal };
 }
 
+/** 상부 구분: '코드' (숫자로 시작) / '이관' (그 외 + 0.기타) / null (상부점 비어 있음) */
 export function segmentOf(upper) {
-  if (!RULES.codePattern.test(upper)) return RULES.transferSegment;
-  if (RULES.transferCodePrefixes.some(p => upper.trim().startsWith(p))) return RULES.transferSegment;
-  const hit = RULES.codeSegments.find(c => upper.includes(c.match));
-  return hit ? hit.segment : null; // null = 타부서 코드
+  if (!upper) return null;
+  if (!RULES.codePattern.test(upper)) return '이관';
+  if (RULES.transferCodePrefixes.some(p => upper.trim().startsWith(p))) return '이관';
+  return '코드';
 }
 export function isJajeom(partner) {
   return RULES.jajeomPattern.test(partner) && !RULES.jajeomExceptPrefixes.some(p => partner.trim().startsWith(p));
@@ -110,22 +111,22 @@ export function compute(parsed, period) {
       const calc = r.base - DEDUCT.reduce((s, k) => s + r.d[k], 0) + r.receipt + r.bundle + r.dongpan;
       if (calc !== r.amount) checks.formulaMismatch++;
       const seg = segmentOf(r.upper);
-      if (!seg) { checks.otherDept++; continue; }
+      if (!seg) { checks.otherDept++; continue; } // 상부점이 비어 있는 행
       const jj = isJajeom(r.partner);
-      const included = !(RULES.transferExcludeJajeom && seg === RULES.transferSegment && jj);
+      const included = true;
       const item = itemOf(r);
       const gift = r.kind === '환수' ? { c: 0, g: 0, k: 0 } : { c: r.d['사은품'], g: r.d['물류'], k: r.d['쿠폰'] };
-      const key = [seg, r.upper, f.side, item, jj ? '자점' : '외부', included].join('|');
+      const key = [seg, r.upper, f.side, item, jj ? '자점' : '협력점', included].join('|');
       let l = map.get(key);
-      if (!l) { l = { segment: seg, upper_name: r.upper, side: f.side, item, partner_type: jj ? '자점' : '외부', included,
+      if (!l) { l = { segment: seg, upper_name: r.upper, side: f.side, item, partner_type: jj ? '자점' : '협력점', included,
         cnt: 0, amount: 0, gift_cash: 0, gift_goods: 0, gift_coupon: 0, jj_fee: 0, direct_gift: 0 }; map.set(key, l); }
       l.cnt++; l.amount += r.amount; l.gift_cash += gift.c; l.gift_goods += gift.g; l.gift_coupon += gift.k;
       // 직접지급사은품: 회사가 고객에게 준 것만 (유치자지급 = 협력점이 직접 지급 → 제외)
       const partnerPaid = (r.giftPayer || '').includes(RULES.partnerPaidGiftLabel);
       if (!partnerPaid) l.direct_gift += gift.c + gift.g + gift.k;
       if (partnerPaid && (gift.c + gift.g + gift.k) && r.giftDone) checks.partnerPaidDone = (checks.partnerPaidDone || 0) + 1;
-      // 자점운영비: 코드 · 전체정산 · 자점(유통·영업정산 제외) · 일반 건
-      if (seg !== RULES.transferSegment && f.side === '전체' && jj && r.kind === '일반'
+      // 자점운영비: 코드 상부 · 전체정산 · 자점(7.유통사업부·0.영업정산 제외) · 일반 건
+      if (seg === '코드' && f.side === '전체' && jj && r.kind === '일반'
           && !RULES.jajeomFeeExcludePrefixes.some(p => r.partner.trim().startsWith(p))) {
         const fee = jajeomFeeOf(r); l.jj_fee += fee; if (fee) checks.jajeomFeeRows = (checks.jajeomFeeRows || 0) + 1;
       }
@@ -149,60 +150,75 @@ export function compute(parsed, period) {
   return { lines: [...map.values()], checks };
 }
 
-/** 집계행 → 화면 요약 숫자 (저장된 회차도 같은 함수로 다시 계산) */
+/** 저장된 집계행이 이전 기준(유통이관·SKB·SKY·매직)인지 */
+export const isLegacyLines = lines => lines.some(l => LEGACY_SEGMENTS.includes(l.segment));
+
+function addLine(t, l) {
+  const gifts = l.gift_cash + l.gift_goods + l.gift_coupon;
+  t.JF += l.jj_fee || 0;
+  if (l.side === '전체') {
+    t.GD += (l.direct_gift == null ? gifts : l.direct_gift);
+    if (l.item === '환수') t.D_F += -l.amount;
+    else {
+      const k = l.item === '관리수수료' ? 'D_A1' : l.item === '정산관련' ? 'D_A2' : 'D_A0';
+      t[k] += l.amount + gifts; t.D_A += l.amount + gifts; t.D_B += l.gift_cash; t.D_C += l.gift_goods; t.D_D += l.gift_coupon;
+    }
+    if (l.partner_type === '자점') t.JJ += l.amount;
+  } else {
+    if (l.item === '환수') t.U_F += -l.amount;
+    else {
+      const k = l.item === '관리수수료' ? 'U_A1' : l.item === '정산관련' ? 'U_A2' : 'U_A';
+      t[k] += l.amount + gifts; t.U_B += l.gift_cash; t.U_C += l.gift_goods; t.U_D += l.gift_coupon;
+    }
+  }
+}
+function finish(t) {
+  t.A = t.D_A - (t.D_B + t.D_C + t.D_D + t.D_F);
+  t.B = (t.U_A + t.U_A1 + t.U_A2) - (t.U_B + t.U_C + t.U_D + t.U_F);
+  t.BA = t.B - t.A;
+  t.GIFT = t.D_B + t.D_C + t.D_D;
+  // 매출 = 상부 최종(B) − 전체 최종(A) − 자점운영비 − 직접지급사은품(웨이브넷 지급분)
+  t.REV = t.BA - t.JF - t.GD;
+}
+
+/** 집계행 → 화면 요약 숫자 (저장된 회차도 같은 함수로 다시 계산)
+ *  4분류: 코드매출·외부유통매출(상부 기준) / 유통매출·직영영업매출(하부 기준). 두 묶음의 합계는 항상 같음 */
 export function summarize(lines) {
   const seg = {};
+  if (isLegacyLines(lines)) { // 이전 기준으로 저장된 회차
+    for (const s of LEGACY_SEGMENTS) seg[s] = blank();
+    for (const l of lines) if (l.included && seg[l.segment]) addLine(seg[l.segment], l);
+    for (const s of LEGACY_SEGMENTS) finish(seg[s]);
+    const rev = LEGACY_SEGMENTS.reduce((a, k) => a + seg[k].REV, 0);
+    return { segments: seg, total: { REV: rev, REV2: rev }, legacy: true };
+  }
   for (const s of SEGMENTS) seg[s] = blank();
   for (const l of lines) {
     if (!l.included) continue;
-    const t = seg[l.segment]; if (!t) continue;
-    const gifts = l.gift_cash + l.gift_goods + l.gift_coupon;
-    t.JF += l.jj_fee || 0;
-    if (l.side === '전체') t.GD += (l.direct_gift == null ? l.gift_cash + l.gift_goods + l.gift_coupon : l.direct_gift);
-    if (l.side === '전체') {
-      if (l.item === '환수') t.D_F += -l.amount;
-      else {
-        const k = l.item === '관리수수료' ? 'D_A1' : l.item === '정산관련' ? 'D_A2' : 'D_A0';
-        t[k] += l.amount + gifts; t.D_A += l.amount + gifts; t.D_B += l.gift_cash; t.D_C += l.gift_goods; t.D_D += l.gift_coupon;
-      }
-      if (l.partner_type === '자점') t.JJ += l.amount;
-    } else {
-      if (l.item === '환수') t.U_F += -l.amount;
-      else {
-        const k = l.item === '관리수수료' ? 'U_A1' : l.item === '정산관련' ? 'U_A2' : 'U_A';
-        t[k] += l.amount + gifts; t.U_B += l.gift_cash; t.U_C += l.gift_goods; t.U_D += l.gift_coupon;
-      }
-    }
+    for (const s of SEGMENTS) if (VIEW_FILTER[s](l)) addLine(seg[s], l);
   }
-  const total = { REV: 0 };
-  for (const s of SEGMENTS) {
-    const t = seg[s];
-    t.A = t.D_A - (t.D_B + t.D_C + t.D_D + t.D_F);
-    t.B = (t.U_A + t.U_A1 + t.U_A2) - (t.U_B + t.U_C + t.U_D + t.U_F);
-    t.BA = t.B - t.A;
-    t.GIFT = t.D_B + t.D_C + t.D_D;
-    // 매출 = 상부 최종(B) − 자점운영비(코드) − 전체 최종(A) − 직접지급사은품(회사가 고객에게 준 현금·물류·쿠폰)
-    t.REV = t.BA - t.JF - t.GD;
-    total.REV += t.REV;
-  }
-  return { segments: seg, total };
+  for (const s of SEGMENTS) finish(seg[s]);
+  const [a, b, c, d] = SEGMENTS.map(k => seg[k]);
+  return { segments: seg, total: { REV: a.REV + b.REV, REV2: c.REV + d.REV, JF: a.JF + b.JF } };
 }
 function blank() {
   return { JF: 0, GD: 0, D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
 }
 
-/** 상부점별 내역 (점검용) */
+/** 상부점별 내역 (점검용) — 상부 구분 · 상부점 · 하부(협력점/자점)별 */
 export function byUpper(lines) {
+  const legacy = isLegacyLines(lines);
+  const order = legacy ? LEGACY_SEGMENTS : ['코드', '이관'];
   const m = new Map();
   for (const l of lines) {
     if (!l.included) continue;
-    const k = l.segment + '|' + l.upper_name;
-    let r = m.get(k); if (!r) { r = { segment: l.segment, upper_name: l.upper_name, B: 0, A: 0, GIFT: 0, JF: 0, cntUp: 0, cntDn: 0 }; m.set(k, r); }
+    const pt = l.partner_type === '자점' ? '자점' : '협력점';
+    const k = l.segment + '|' + l.upper_name + '|' + pt;
+    let r = m.get(k); if (!r) { r = { segment: l.segment, upper_name: l.upper_name, partner_type: pt, B: 0, A: 0, GD: 0, JF: 0, cntUp: 0, cntDn: 0 }; m.set(k, r); }
     r.JF += l.jj_fee || 0;
-    if (l.side === '전체') r.GD = (r.GD || 0) + (l.direct_gift == null ? l.gift_cash + l.gift_goods + l.gift_coupon : l.direct_gift);
     if (l.side === '상부') { r.B += l.amount; r.cntUp += l.cnt; }
-    else { r.A += l.amount; r.cntDn += l.cnt; r.GIFT += l.gift_cash + l.gift_goods + l.gift_coupon; }
+    else { r.A += l.amount; r.cntDn += l.cnt; r.GD += (l.direct_gift == null ? l.gift_cash + l.gift_goods + l.gift_coupon : l.direct_gift); }
   }
-  return [...m.values()].map(r => ({ ...r, GD: r.GD || 0, REV: r.B - r.A - r.JF - (r.GD || 0) }))
-    .sort((a, b) => SEGMENTS.indexOf(a.segment) - SEGMENTS.indexOf(b.segment) || b.REV - a.REV);
+  return [...m.values()].map(r => ({ ...r, REV: r.B - r.A - r.JF - r.GD }))
+    .sort((a, b) => order.indexOf(a.segment) - order.indexOf(b.segment) || a.upper_name.localeCompare(b.upper_name, 'ko') || (a.partner_type === '자점') - (b.partner_type === '자점'));
 }
