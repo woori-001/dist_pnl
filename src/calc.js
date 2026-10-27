@@ -1,5 +1,5 @@
 // 손익매출 계산 엔진 — 브라우저와 Node 양쪽에서 동작 (XLSX 객체는 밖에서 넘겨받음)
-import { RULES, SEGMENTS, VIEW_FILTER, LEGACY_SEGMENTS } from './rules.js';
+import { RULES, SEGMENTS, VIEW_FILTER, LEGACY_SEGMENTS, DIST_VIEWS } from './rules.js';
 
 const SIDE_BY_SHEET = { '상부정산관리': '상부', '전체정산관리': '전체' };
 const NEED = ['정산종류', '협력점', '상부점', '상품명', '개통일', '정산예정일', '정산금액',
@@ -172,13 +172,15 @@ function addLine(t, l) {
     }
   }
 }
-function finish(t) {
+function finish(t, jfOut = false) {
   t.A = t.D_A - (t.D_B + t.D_C + t.D_D + t.D_F);
   t.B = (t.U_A + t.U_A1 + t.U_A2) - (t.U_B + t.U_C + t.U_D + t.U_F);
   t.BA = t.B - t.A;
   t.GIFT = t.D_B + t.D_C + t.D_D;
   // 매출 = 상부 최종(B) − 전체 최종(A) − 자점운영비 − 직접지급사은품(웨이브넷 지급분)
-  t.REV = t.BA - t.JF - t.GD;
+  // 유통사업부 4분류는 자점운영비를 빼지 않고 별도 표기 (jfOut)
+  t.JF_OUT = jfOut;
+  t.REV = t.BA - (jfOut ? 0 : t.JF) - t.GD;
 }
 
 /** 집계행 → 화면 요약 숫자 (저장된 회차도 같은 함수로 다시 계산)
@@ -197,14 +199,14 @@ export function summarize(lines) {
     if (!l.included) continue;
     for (const s of SEGMENTS) if (VIEW_FILTER[s](l)) addLine(seg[s], l);
   }
-  for (const s of SEGMENTS) finish(seg[s]);
+  for (const s of SEGMENTS) finish(seg[s], DIST_VIEWS.includes(s));
   const [a, b, c, d] = ['코드매출', '외부유통매출', '유통매출', '직영영업매출'].map(k => seg[k]);
   // 하부 × 상부 4칸 (협력점>코드, 자점>코드, 협력점>이관, 자점>이관)
   const cells = {};
   for (const pt of ['협력점', '자점']) for (const up of ['코드', '이관']) {
     const t = blank();
     for (const l of lines) if (l.included && l.segment === up && (l.partner_type === '자점' ? '자점' : '협력점') === pt) addLine(t, l);
-    finish(t); cells[`${pt}|${up}`] = t.REV;
+    finish(t, true); cells[`${pt}|${up}`] = t.REV;
   }
   return { segments: seg, total: { REV: a.REV + b.REV, REV2: c.REV + d.REV, JF: a.JF + b.JF, cells } };
 }

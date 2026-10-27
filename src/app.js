@@ -252,7 +252,7 @@ const LINES = [ // 엑셀 내보내기용 (전체 항목)
   ['', 'a. 수수료 (a-1·a-2 제외)', 'U_A'], ['', 'a-1. 관리수수료', 'U_A1'], ['', 'a-2. 정산관련', 'U_A2'], ['', 'b. 사은품 - 현금', 'U_B'], ['', 'c. 사은품 - 물류', 'U_C'], ['', 'd. 사은품 - 쿠폰', 'U_D'], ['', 'f. 환수', 'U_F'],
   ['b', '최종 정산금액 (B) = (a+a1+a2) − (b+c+d+f)', 'B'],
   ['sec', '매출'],
-  ['', '(−) 자점운영비 (코드 상부 · 자점 일반 건)', 'JF', -1],
+  ['', '(−) 자점운영비 (코드 상부 · 자점 일반 건) — 유통사업부 4분류는 별도 표기, 매출에 미반영', 'JF', -1],
   ['', '(−) 직접지급사은품 (웨이브넷 지급분)', 'GD', -1],
   ['key', '매출 = B − A − 자점운영비 − 직접지급사은품', 'REV'],
   ['ref', '참고: 전체정산 중 자점 협력점 지급분', 'JJ', 1],
@@ -287,7 +287,7 @@ function renderSummary(summary, title, segStatus = blankSt()) {
         <div class="kpi-top"><div class="kpi-label">유통사업부</div>${stt('유통사업부')}</div>
         <div class="kpi-value">${kv(tot.REV)}</div>
         <div class="kpi-subs">${sub('코드매출')}${sub('외부유통매출')}${sumLine('코드매출+외부유통매출', tot.REV)}${sub('유통매출')}${sub('직영영업매출')}${sumLine('유통매출+직영영업매출', tot.REV2, same)}</div>
-        <div class="kpi-note">자점운영비 −${man1(tot.JF)} 반영 (코드 상부 자점 건)</div>
+        <div class="kpi-note">자점운영비 ${man1(tot.JF)} 별도 · 위 금액에 미반영</div>
       </div>` + CODE_VIEWS.map(tile).join('');
   }
   const t = s[detailSeg];
@@ -301,10 +301,13 @@ function renderSummary(summary, title, segStatus = blankSt()) {
   const body = rows.map(([g, item, up, dn]) => `<tr>${g ? `<th class="grp" rowspan="${grpSpan[g]}">${g}</th>` : ''}<td class="item">${item}</td>
       <td class="n">${won(up)}</td><td class="n">${won(dn)}</td><td class="n diff">${won(up - dn)}</td></tr>`).join('')
     + `<tr><th class="grp" colspan="2">환수</th><td class="n">${won(-t.U_F)}</td><td class="n">${won(-t.D_F)}</td><td class="n diff">${won(-t.U_F + t.D_F)}</td></tr>`
-    + `<tr><th class="grp" colspan="2">자점운영비</th><td class="n">${won(-t.JF)}</td><td class="n">-</td><td class="n diff">${won(-t.JF)}</td></tr>`
+    + (t.JF_OUT ? '' : `<tr><th class="grp" colspan="2">자점운영비</th><td class="n">${won(-t.JF)}</td><td class="n">-</td><td class="n diff">${won(-t.JF)}</td></tr>`)
     + `<tr><th class="grp" colspan="2">직접지급사은품</th><td class="n">-</td><td class="n">${won(t.GD)}</td><td class="n diff">${won(-t.GD)}</td></tr>`
-    + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B - (t.JF || 0))}</td><td class="n">${won(t.A + t.GD)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
-  const jj = !t.JF ? '' : `<p class="muted small" style="margin:0">자점운영비 = 코드 상부 아래 자점 '일반' 건의 자점 마진(접수일 기준 금액, 7.유통사업부·0.영업정산 제외)</p>`;
+    + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B - (t.JF_OUT ? 0 : (t.JF || 0)))}</td><td class="n">${won(t.A + t.GD)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
+  const jfDef = `코드 상부 아래 자점 '일반' 건의 자점 마진(접수일 기준 금액, 7.유통사업부·0.영업정산 제외)`;
+  const jj = t.JF_OUT && t.JF
+    ? `<div class="jf-out"><div><b>자점운영비</b><span>${won(t.JF)}원</span></div><p>※ 위 표 금액에는 반영되지 않았어요 (별도 표기) · ${jfDef}</p></div>`
+    : !t.JF || t.JF_OUT ? '' : `<p class="muted small" style="margin:0">자점운영비 = ${jfDef}</p>`;
   const name = DIST_VIEWS.includes(detailSeg) ? `유통사업부 ${detailSeg}` : detailSeg;
   const head = legacy ? `<div class="notice warn">이전 기준(유통이관·SKB·SKY·매직)으로 저장된 회차예요. 유통사업부 4분류로 보려면 이 달을 다시 계산해서 저장하세요.</div>` : '';
   return `${head}<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${left}</div>
@@ -425,7 +428,7 @@ function repRun(period, seg) {
   if (seg) return list.find(r => segSt(r, seg) === '확정') || list[0];
   return list.find(r => r.status === '확정') || list.find(r => segsOf(r).some(k => segSt(r, k) === '확정')) || list[0];
 }
-const revOf = (run, k) => { const t = run.summary.segments[k]; return t.B - t.A - (t.JF || 0) - (t.GD ?? ((t.D_B || 0) + (t.D_C || 0) + (t.D_D || 0))); }; // B − A − 자점운영비 − 직접지급사은품
+const revOf = (run, k) => { const t = run.summary.segments[k]; const jf = DIST_VIEWS.includes(k) ? 0 : (t.JF || 0); return t.B - t.A - jf - (t.GD ?? ((t.D_B || 0) + (t.D_C || 0) + (t.D_D || 0))); }; // B − A − 자점운영비(유통사업부는 별도라 미차감) − 직접지급사은품
 const man = v => { const n = Math.round((v || 0) / 1e4); return `${n.toLocaleString('ko-KR')}<small>만</small>`; };
 function renderMonths() {
   const y = state.year;
@@ -504,7 +507,7 @@ function exportXlsx(period, summary, lines, segStatus = blankSt()) {
     aoa.push([lab, ...KS.map(k => sign * s[k][key])]);
   }
   if (!summary.legacy) {
-    aoa.push([], ['[유통사업부 검산]'], ['코드매출 + 외부유통매출', summary.total.REV], ['유통매출 + 직영영업매출', summary.total.REV2], ['자점운영비 (별도 표기 · 위 매출에 반영됨)', summary.total.JF]);
+    aoa.push([], ['[유통사업부 검산]'], ['코드매출 + 외부유통매출', summary.total.REV], ['유통매출 + 직영영업매출', summary.total.REV2], ['자점운영비 (별도 표기 · 유통사업부 매출에 미반영)', summary.total.JF]);
   }
   const ws1 = XLSX.utils.aoa_to_sheet(aoa); ws1['!cols'] = [{ wch: 42 }, ...KS.map(() => ({ wch: 16 }))];
   numFmt(ws1); XLSX.utils.book_append_sheet(wb, ws1, '요약');
