@@ -277,12 +277,16 @@ function renderSummary(summary, title, segStatus = blankSt()) {
   if (legacy) left = keys.map(tile).join('');
   else {
     const same = Math.round(tot.REV) === Math.round(tot.REV2);
+    const cells = tot.cells || {};
+    const PARTS = { '코드매출': ['협력점|코드', '자점|코드'], '외부유통매출': ['협력점|이관', '자점|이관'], '유통매출': ['협력점|코드', '협력점|이관'], '직영영업매출': ['자점|코드', '자점|이관'] };
     const sub = k => `<button type="button" class="kpi-sub${k === detailSeg ? ' hot' : ''}" data-seg="${k}" role="tab" aria-selected="${k === detailSeg}">
-        <span class="sl">${k}<small>${SEG_NOTE[k]}</small></span><span class="sv${s[k].REV < 0 ? ' neg' : ''}">${man1(s[k].REV)}</span></button>`;
+        <span class="sh"><span class="sl">${k}</span><span class="sv">${man1(s[k].REV)}</span></span>
+        ${PARTS[k].map(c => `<span class="sp"><span>${c.replace('|', ' > ')}</span><span>${man1(cells[c])}</span></span>`).join('')}</button>`;
+    const sumLine = (lab, v, ok) => `<div class="sub-sum"><span>${lab} 합계</span><b>${man1(v)}</b>${ok === undefined ? '' : ok ? '<i>✓</i>' : '<i class="bad">≠</i>'}</div>`;
     left = `<div class="kpi-grp${DIST_VIEWS.includes(detailSeg) ? ' on' : ''}" data-stk="유통사업부">
         <div class="kpi-top"><div class="kpi-label">유통사업부</div>${stt('유통사업부')}</div>
         <div class="kpi-value">${kv(tot.REV)}</div>
-        <div class="kpi-subs">${sub('코드매출')}${sub('외부유통매출')}<div class="sub-eq">${same ? '= 같음 ✓' : '≠ 다름'}</div>${sub('유통매출')}${sub('직영영업매출')}</div>
+        <div class="kpi-subs">${sub('코드매출')}${sub('외부유통매출')}${sumLine('코드매출+외부유통매출', tot.REV)}${sub('유통매출')}${sub('직영영업매출')}${sumLine('유통매출+직영영업매출', tot.REV2, same)}</div>
         <div class="kpi-note">자점운영비 −${man1(tot.JF)} 반영 (코드 상부 자점 건)</div>
       </div>` + CODE_VIEWS.map(tile).join('');
   }

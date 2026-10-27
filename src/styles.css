@@ -392,3 +392,19 @@ body.snapping .stt { background: transparent; }
 @media (min-width: 1101px) { .kpi-col .kpi-sub.hot::after { content: ""; position: absolute; right: -25px; top: 50%; width: 14px; height: 14px; border-radius: 3px; background: var(--orange); transform: translateY(-50%) rotate(45deg); } }
 @media (max-width: 1100px) { .kpi-grp { grid-column: 1 / -1; } }
 body.snapping .kpi-sub { letter-spacing: 0; }
+
+/* 유통사업부 카드: 항목별 하부>상부 내역 + 합계 줄 */
+.kpi-sub { display: grid; gap: 2px; justify-content: stretch; }
+.kpi-sub .sh { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.kpi-sub .sl { font-size: 12.5px; font-weight: 700; }
+.kpi-sub .sp { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; font-weight: 600; opacity: .82; font-variant-numeric: tabular-nums; padding-left: 8px; }
+.sub-sum { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 700; padding: 4px 10px 6px; border-bottom: 1px dashed rgba(255,255,255,.35); margin-bottom: 2px; }
+.sub-sum span { opacity: .9; }
+.sub-sum b { margin-left: auto; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sub-sum i { font-style: normal; font-size: 11px; background: rgba(255,255,255,.25); border-radius: 999px; padding: 0 6px; }
+.sub-sum i.bad { background: var(--neg); }
+.kpi-subs > .sub-sum:last-child { border-bottom: 0; }
+.sub-sum { padding: 4px 6px 6px 10px; gap: 4px; }
+.sub-sum span { white-space: nowrap; font-size: 11px; letter-spacing: -0.03em; }
+.sub-sum b { font-size: 12.5px; letter-spacing: -0.01em; }
+body.snapping .sub-sum span, body.snapping .sub-sum b { letter-spacing: 0; }

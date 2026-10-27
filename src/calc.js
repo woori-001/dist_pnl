@@ -199,7 +199,14 @@ export function summarize(lines) {
   }
   for (const s of SEGMENTS) finish(seg[s]);
   const [a, b, c, d] = ['코드매출', '외부유통매출', '유통매출', '직영영업매출'].map(k => seg[k]);
-  return { segments: seg, total: { REV: a.REV + b.REV, REV2: c.REV + d.REV, JF: a.JF + b.JF } };
+  // 하부 × 상부 4칸 (협력점>코드, 자점>코드, 협력점>이관, 자점>이관)
+  const cells = {};
+  for (const pt of ['협력점', '자점']) for (const up of ['코드', '이관']) {
+    const t = blank();
+    for (const l of lines) if (l.included && l.segment === up && (l.partner_type === '자점' ? '자점' : '협력점') === pt) addLine(t, l);
+    finish(t); cells[`${pt}|${up}`] = t.REV;
+  }
+  return { segments: seg, total: { REV: a.REV + b.REV, REV2: c.REV + d.REV, JF: a.JF + b.JF, cells } };
 }
 function blank() {
   return { JF: 0, GD: 0, D_A: 0, D_A0: 0, D_A1: 0, D_A2: 0, D_B: 0, D_C: 0, D_D: 0, D_F: 0, A: 0, U_A: 0, U_A1: 0, U_A2: 0, U_B: 0, U_C: 0, U_D: 0, U_F: 0, B: 0, BA: 0, GIFT: 0, REV: 0, JJ: 0 };
