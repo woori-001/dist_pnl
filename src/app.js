@@ -1,6 +1,6 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { RULES, SEGMENTS, LEGACY_SEGMENTS } from './rules.js';
+import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js';
 import { parseWorkbook, compute, summarize, byUpper } from './calc.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
@@ -10,11 +10,13 @@ const XLSX = window.XLSX;
 const state = { files: [], result: null, runs: [], selPeriod: null, selRun: null, year: new Date().getFullYear(), segStatus: null };
 const ST = ['가정산', '확정'];
 const segSt = (run, k) => (run.seg_status && run.seg_status[k]) || run.status || '가정산';
-const blankSt = () => Object.fromEntries(SEGMENTS.map(k => [k, '가정산']));
+const blankSt = () => Object.fromEntries(STATUS_KEYS.map(k => [k, '가정산']));
 // 이전 기준(10/27 전) 회차는 구분 이름이 달라요 — 회차의 seg_status 키로 판별
-const isLegacyRun = run => !!run && LEGACY_SEGMENTS.some(k => run.seg_status && k in run.seg_status);
-const segsOf = run => isLegacyRun(run) ? LEGACY_SEGMENTS : SEGMENTS;
-const totalOf = run => { const ks = segsOf(run); return (isLegacyRun(run) ? ks : ks.slice(0, 2)).reduce((a, k) => a + revOf(run, k), 0); };
+const isLegacyRun = run => !!run && !!run.seg_status && '유통이관' in run.seg_status;
+const segsOf = run => isLegacyRun(run) ? LEGACY_SEGMENTS : STATUS_KEYS; // 상태 단위
+// 상태 단위별 매출: 유통사업부 = 코드매출 + 외부유통매출 (= 유통매출 + 직영영업매출)
+const valOf = (run, k) => k === '유통사업부' ? revOf(run, '코드매출') + revOf(run, '외부유통매출') : revOf(run, k);
+const totalOf = run => isLegacyRun(run) ? LEGACY_SEGMENTS.reduce((a, k) => a + revOf(run, k), 0) : valOf(run, '유통사업부');
 
 // ---------- 공통 ----------
 const won = v => {
@@ -226,7 +228,7 @@ $('btnSave').onclick = async () => {
   const st = { ...state.segStatus };
   const periodDate = r.period + '-01';
   const existing = state.runs.filter(x => ym(x.period) === r.period && !isLegacyRun(x));
-  const clash = SEGMENTS.filter(k => st[k] === '확정' && existing.some(x => segSt(x, k) === '확정'));
+  const clash = STATUS_KEYS.filter(k => st[k] === '확정' && existing.some(x => segSt(x, k) === '확정'));
   if (clash.length && !await ask(`${monthLabel(r.period)} ${clash.join(', ')}은(는) 이미 확정된 회차가 있어요. 이번 계산을 확정으로 저장하면 이전 확정은 가정산으로 바뀌어요. 계속할까요?`)) return;
   $('btnSave').disabled = true; $('btnSave').textContent = '저장 중…';
   const files = state.files.map(f => ({ name: f.fileName, side: f.side, rows: f.rows.length, total: f.fileTotal }));
@@ -236,8 +238,8 @@ $('btnSave').onclick = async () => {
   $('btnSave').disabled = false;
   if (error) { $('btnSave').textContent = '이 달 결과 저장'; toast('저장 실패: ' + error.message); return; }
   $('btnSave').textContent = '✓ 저장됨';
-  const nConf = SEGMENTS.filter(k => st[k] === '확정').length;
-  toast(`${monthLabel(r.period)} 저장 완료 · ${nConf === SEGMENTS.length ? '전체 확정' : nConf ? `확정 ${nConf}/4` : '가정산'} — 월별 내역에서 볼 수 있어요`); loadRuns();
+  const nConf = STATUS_KEYS.filter(k => st[k] === '확정').length;
+  toast(`${monthLabel(r.period)} 저장 완료 · ${nConf === STATUS_KEYS.length ? '전체 확정' : nConf ? `확정 ${nConf}/${STATUS_KEYS.length}` : '가정산'} — 월별 내역에서 볼 수 있어요`); loadRuns();
 };
 $('btnExportCalc').onclick = () => { const r = state.result; if (r) exportXlsx(r.period, r.summary, r.lines, state.segStatus); };
 
@@ -255,25 +257,37 @@ const LINES = [ // 엑셀 내보내기용 (전체 항목)
   ['key', '매출 = B − A − 자점운영비 − 직접지급사은품', 'REV'],
   ['ref', '참고: 전체정산 중 자점 협력점 지급분', 'JJ', 1],
 ];
-const SEG_NOTE = { '코드매출': '상부 코드 · 협력점+자점', '외부유통매출': '상부 이관 · 협력점+자점', '유통매출': '하부 협력점 · 코드+이관', '직영영업매출': '하부 자점 · 코드+이관',
-  '유통이관': '이전 기준', 'SKB웨이브넷': '이전 기준', 'SKY우리정보': '이전 기준', 'SK매직': '이전 기준' };
+const SEG_NOTE = { '코드매출': '협력점·자점 / 코드', '외부유통매출': '협력점·자점 / 이관', '유통매출': '협력점 / 코드·이관', '직영영업매출': '자점 / 코드·이관',
+  'SKB웨이브넷': '코드 · 자점 포함', 'SKY우리정보': '코드 · 자점 포함', 'SK매직': '코드 · 자점 포함' };
 let detailSeg = SEGMENTS[0];
 function renderSummary(summary, title, segStatus = blankSt()) {
   const s = summary.segments;
   const keys = Object.keys(s), legacy = !!summary.legacy;
   if (!keys.includes(detailSeg)) detailSeg = keys[0];
   const kv = v => `${Math.round(v || 0).toLocaleString('ko-KR')}<small>원</small>`;
-  const tot = summary.total || {};
-  const same = Math.round(tot.REV) === Math.round(tot.REV2);
-  const head = legacy
-    ? `<div class="notice warn">이전 기준(유통이관·SKB·SKY·매직)으로 저장된 회차예요. 새 4분류로 보려면 이 달을 다시 계산해서 저장하세요.</div>`
-    : `<div class="sum-check"><span>코드매출 + 외부유통매출 <b>${won(tot.REV)}</b></span><span class="eq">${same ? '=' : '≠'}</span><span>유통매출 + 직영영업매출 <b>${won(tot.REV2)}</b></span>${same ? '<span class="okline">✓ 일치</span>' : '<b class="neg">불일치</b>'}<span class="jfnote">자점운영비 ${won(tot.JF)}원 반영됨 (코드매출·직영영업매출에서 차감)</span></div>`;
-  const kpi = keys.map(k => `<div class="kpi kpi-btn${k === detailSeg ? ' hot' : ''}" data-seg="${k}" role="tab" tabindex="0" aria-selected="${k === detailSeg}">
-      <div class="kpi-top"><div class="kpi-label">${k}</div>
-        ${legacy ? '' : `<div class="stt" role="group" aria-label="${k} 정산 상태">${ST.map(x => `<button type="button" data-st="${x}" class="${segStatus[k] === x ? 'on ' + x : ''}" aria-pressed="${segStatus[k] === x}">${x}</button>`).join('')}</div>`}</div>
+  const man1 = v => `${Math.round(v || 0).toLocaleString('ko-KR')}`;
+  const stt = k => legacy ? '' : `<div class="stt" role="group" aria-label="${k} 정산 상태">${ST.map(x => `<button type="button" data-st="${x}" class="${segStatus[k] === x ? 'on ' + x : ''}" aria-pressed="${segStatus[k] === x}">${x}</button>`).join('')}</div>`;
+  const jfNote = k => s[k].JF ? ` · 자점운영비 −${man1(s[k].JF)}` : '';
+  const tile = k => `<div class="kpi kpi-btn${k === detailSeg ? ' hot' : ''}" data-seg="${k}" ${legacy ? '' : `data-stk="${k}"`} role="tab" tabindex="0" aria-selected="${k === detailSeg}">
+      <div class="kpi-top"><div class="kpi-label">${k}</div>${stt(k)}</div>
       <div class="kpi-value">${kv(s[k].REV)}</div>
-      <div class="kpi-note">${SEG_NOTE[k] || ''}${s[k].JF ? ` · 자점운영비 −${Math.round(s[k].JF).toLocaleString('ko-KR')}` : ''}</div></div>`).join('');
+      <div class="kpi-note">${legacy ? '이전 기준' : (SEG_NOTE[k] || '')}${jfNote(k)}</div></div>`;
+  let left;
+  const tot = summary.total || {};
+  if (legacy) left = keys.map(tile).join('');
+  else {
+    const same = Math.round(tot.REV) === Math.round(tot.REV2);
+    const sub = k => `<button type="button" class="kpi-sub${k === detailSeg ? ' hot' : ''}" data-seg="${k}" role="tab" aria-selected="${k === detailSeg}">
+        <span class="sl">${k}<small>${SEG_NOTE[k]}</small></span><span class="sv${s[k].REV < 0 ? ' neg' : ''}">${man1(s[k].REV)}</span></button>`;
+    left = `<div class="kpi-grp${DIST_VIEWS.includes(detailSeg) ? ' on' : ''}" data-stk="유통사업부">
+        <div class="kpi-top"><div class="kpi-label">유통사업부</div>${stt('유통사업부')}</div>
+        <div class="kpi-value">${kv(tot.REV)}</div>
+        <div class="kpi-subs">${sub('코드매출')}${sub('외부유통매출')}<div class="sub-eq">${same ? '= 같음 ✓' : '≠ 다름'}</div>${sub('유통매출')}${sub('직영영업매출')}</div>
+        <div class="kpi-note">자점운영비 −${man1(tot.JF)} 반영 (코드 상부 자점 건)</div>
+      </div>` + CODE_VIEWS.map(tile).join('');
+  }
   const t = s[detailSeg];
+  const stKey = legacy ? null : statusKeyOf(detailSeg);
   // 상부·전체를 같은 항목으로 나란히 (차감 항목은 −로 표시)
   const rows = [
     ['수수료', '일반', t.U_A, t.D_A0], ['', '관리', t.U_A1, t.D_A1], ['', '정산관련', t.U_A2, t.D_A2],
@@ -287,8 +301,10 @@ function renderSummary(summary, title, segStatus = blankSt()) {
     + `<tr><th class="grp" colspan="2">직접지급사은품</th><td class="n">-</td><td class="n">${won(t.GD)}</td><td class="n diff">${won(-t.GD)}</td></tr>`
     + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B - (t.JF || 0))}</td><td class="n">${won(t.A + t.GD)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
   const jj = !t.JF ? '' : `<p class="muted small" style="margin:0">자점운영비 = 코드 상부 아래 자점 '일반' 건의 자점 마진(접수일 기준 금액, 7.유통사업부·0.영업정산 제외)</p>`;
-  return `${head}<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${kpi}</div>
-    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${detailSeg}${legacy ? '' : ` <span class="pill ${segStatus[detailSeg]}">${segStatus[detailSeg]}</span>`}</h2></div><button type="button" class="small-btn js-snap" data-name="${esc(title)}_${detailSeg}">이미지 저장</button></div>
+  const name = DIST_VIEWS.includes(detailSeg) ? `유통사업부 ${detailSeg}` : detailSeg;
+  const head = legacy ? `<div class="notice warn">이전 기준(유통이관·SKB·SKY·매직)으로 저장된 회차예요. 유통사업부 4분류로 보려면 이 달을 다시 계산해서 저장하세요.</div>` : '';
+  return `${head}<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${left}</div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${name}${stKey ? ` <span class="pill ${segStatus[stKey]}">${segStatus[stKey]}</span>` : ''}</h2></div><button type="button" class="small-btn js-snap" data-name="${esc(title)}_${detailSeg}">이미지 저장</button></div>
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
 function rerenderSummary(host) {
@@ -296,22 +312,24 @@ function rerenderSummary(host) {
   else if (host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title, state.detail.segStatus) + renderUpper(byUpper(state.detail.lines));
 }
 document.addEventListener('click', async e => {
-  const tile = e.target.closest('[data-seg]'); if (!tile) return;
-  const host = tile.closest('#calcSummary, #runBody'); if (!host) return;
-  const seg = tile.dataset.seg;
+  const host = e.target.closest('#calcSummary, #runBody'); if (!host) return;
   const stBtn = e.target.closest('[data-st]');
   if (stBtn) {
-    const to = stBtn.dataset.st;
-    if (host.id === 'calcSummary') { state.segStatus[seg] = to; detailSeg = seg; rerenderSummary(host); $('btnSave').textContent = '이 달 결과 저장'; return; }
+    const holder = stBtn.closest('[data-stk]'); if (!holder) return;
+    const key = holder.dataset.stk, to = stBtn.dataset.st;
+    if (host.id === 'calcSummary') { state.segStatus[key] = to; rerenderSummary(host); $('btnSave').textContent = '이 달 결과 저장'; return; }
     // 저장된 회차: 바로 DB에 반영
-    const d = state.detail; if (!d || d.segStatus[seg] === to) return;
-    const others = state.runs.filter(r => ym(r.period) === d.period && r.id !== d.runId && segSt(r, seg) === '확정');
-    if (to === '확정' && others.length && !await ask(`${monthLabel(d.period)} ${seg}은(는) 다른 회차가 확정되어 있어요. 이 회차를 확정하면 그 회차는 가정산으로 바뀌어요. 계속할까요?`)) return;
-    const { error } = await sb.rpc('dist_pnl_set_seg_status', { p_run: d.runId, p_seg: seg, p_status: to });
+    const d = state.detail; if (!d || d.segStatus[key] === to) return;
+    const others = state.runs.filter(r => ym(r.period) === d.period && r.id !== d.runId && segSt(r, key) === '확정');
+    if (to === '확정' && others.length && !await ask(`${monthLabel(d.period)} ${key}은(는) 다른 회차가 확정되어 있어요. 이 회차를 확정하면 그 회차는 가정산으로 바뀌어요. 계속할까요?`)) return;
+    const { error } = await sb.rpc('dist_pnl_set_seg_status', { p_run: d.runId, p_seg: key, p_status: to });
     if (error) { toast('변경 실패: ' + error.message); return; }
-    detailSeg = seg; toast(`${seg} → ${to}`); await loadRuns(); return;
+    toast(`${key} → ${to}`); await loadRuns(); return;
   }
-  detailSeg = seg; rerenderSummary(host);
+  const tile = e.target.closest('[data-seg]');
+  if (tile) { detailSeg = tile.dataset.seg; rerenderSummary(host); return; }
+  const grp = e.target.closest('.kpi-grp');
+  if (grp && !DIST_VIEWS.includes(detailSeg)) { detailSeg = DIST_VIEWS[0]; rerenderSummary(host); }
 });
 // ---------- 이미지 저장 (구분 타일 + 결과표) ----------
 let h2cLoading = null;
@@ -365,21 +383,21 @@ async function snapAll(hostId, title, btn) {
   try {
     const JSZip = await loadScript('https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js', 'JSZip');
     const zip = new JSZip();
-    const keys = [...host.querySelectorAll('.kpi-btn[data-seg]')].map(x => x.dataset.seg);
+    const keys = [...host.querySelectorAll('.kpi-col [data-seg]')].map(x => x.dataset.seg);
     for (const [i, seg] of keys.entries()) {
       btn.textContent = `만드는 중 ${i + 1}/${keys.length}`;
       detailSeg = seg; rerenderSummary(host);
       await new Promise(r => requestAnimationFrame(() => setTimeout(r, 60)));
-      zip.file(`${i + 1}_${seg}.png`, await captureSplit(host.querySelector('.sum-panel')));
+      zip.file(`${i + 1}_${DIST_VIEWS.includes(seg) ? '유통사업부_' : ''}${seg}.png`, await captureSplit(host.querySelector('.sum-panel')));
     }
     downloadBlob(await zip.generateAsync({ type: 'blob' }), `유통사업부_손익매출_${fileTag(title)}_이미지.zip`);
-    toast('4분류 이미지를 ZIP으로 저장했어요');
+    toast(`${keys.length}개 구분 이미지를 ZIP으로 저장했어요`);
   } catch (err) { toast(err.message || '이미지 저장 실패'); }
   finally { detailSeg = keep; rerenderSummary(host); btn.disabled = false; btn.textContent = old; }
 }
 $('btnSnapAllCalc').onclick = () => { const r = state.result; if (r) snapAll('calcSummary', monthLabel(r.period), $('btnSnapAllCalc')); };
 document.addEventListener('keydown', e => {
-  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('.kpi-btn[data-seg]')) { e.preventDefault(); e.target.click(); }
+  if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('div.kpi-btn[data-seg]')) { e.preventDefault(); e.target.click(); }
 });
 function renderUpper(rows) {
   const tr = rows.map(r => `<tr><td>${r.segment}</td><td>${esc(r.upper_name)}</td><td>${r.partner_type}</td><td class="n">${r.cntUp.toLocaleString()}</td><td class="n">${won(r.B)}</td>
@@ -418,14 +436,14 @@ function renderMonths() {
     const nConf = old ? 0 : sts.filter(x => x === '확정').length;
     if (r) nConf === KS.length ? nAll++ : nConf ? nPart++ : nNone++;
     const cls = ['mcell', r ? '' : 'empty', state.selPeriod === p ? 'sel' : '', p === nowKey ? 'now' : ''].filter(Boolean).join(' ');
-    const tip = r ? (old ? '이전 기준으로 저장됨 — 다시 계산 필요' : KS.map((k, i) => `${k} ${Math.round(revOf(repRun(p, k), k)).toLocaleString('ko-KR')}원 (${sts[i]})`).join('\n')) : '기록 없음';
-    const rev = r ? (old ? totalOf(r) : revOf(repRun(p, KS[0]), KS[0]) + revOf(repRun(p, KS[1]), KS[1])) : 0;
+    const tip = r ? (old ? '이전 기준으로 저장됨 — 다시 계산 필요' : KS.map((k, i) => `${k} ${Math.round(valOf(repRun(p, k), k)).toLocaleString('ko-KR')}원 (${sts[i]})`).join('\n')) : '기록 없음';
+    const rev = r ? (old ? totalOf(r) : valOf(repRun(p, '유통사업부'), '유통사업부')) : 0;
     const label = !r ? (p === nowKey ? '이번 달' : '기록 없음') : old ? '이전 기준' : nConf === KS.length ? '전체 확정' : nConf ? `확정 ${nConf}/${KS.length}` : '가정산';
     cells.push(`<button class="${cls}" data-p="${p}" title="${esc(`${m}월\n${tip}`)}">
       ${r && !old ? `<span class="mdots">${KS.map((k, i) => `<i class="${sts[i]}" title="${k} ${sts[i]}"></i>`).join('')}</span>` : ''}
       <span class="mnum">${m}<small>월</small></span>
       <span class="mcap">${label}</span>
-      ${r ? `<span class="mval${rev < 0 ? ' neg' : ''}">${man(rev)}</span><span class="mcap">${old ? '이전 기준 합계' : '매출 합계'}</span>` : ''}
+      ${r ? `<span class="mval${rev < 0 ? ' neg' : ''}">${man(rev)}</span><span class="mcap">${old ? '이전 기준 합계' : '유통사업부 매출'}</span>` : ''}
     </button>`);
   }
   $('calGrid').innerHTML = cells.join('');
@@ -442,15 +460,15 @@ async function renderDetail() {
   const run = list.find(r => r.id === state.selRun) || repRun(p);
   state.selRun = run.id;
   const stCell = r => { if (isLegacyRun(r)) return '<span class="pill">이전 기준</span>'; const KS = segsOf(r), n = KS.filter(k => segSt(r, k) === '확정').length; return `<span class="pill ${n === KS.length ? '확정' : '가정산'}">${n === KS.length ? '전체 확정' : n ? `확정 ${n}/${KS.length}` : '가정산'}</span>`; };
-  const segCells = r => isLegacyRun(r) ? `<td class="n" colspan="${SEGMENTS.length}">${won(totalOf(r))} <span class="muted small">(이전 기준 합계)</span></td>`
-    : SEGMENTS.map(k => `<td class="n">${won(revOf(r, k))} <span class="sdot ${segSt(r, k)}" title="${segSt(r, k)}"></span></td>`).join('');
+  const segCells = r => isLegacyRun(r) ? `<td class="n" colspan="${STATUS_KEYS.length}">${won(totalOf(r))} <span class="muted small">(이전 기준 · 유통이관+SKB+SKY+매직)</span></td>`
+    : STATUS_KEYS.map(k => `<td class="n">${won(valOf(r, k))} <span class="sdot ${segSt(r, k)}" title="${segSt(r, k)}"></span></td>`).join('');
   const runRows = list.map(r => `<tr class="click ${r.id === run.id ? 'sel' : ''}" data-id="${r.id}"><td>${stCell(r)}</td>
     <td class="muted small">${new Date(r.created_at).toLocaleString('ko-KR')}</td><td class="small">${esc(r.created_by || '')}</td>
     ${segCells(r)}<td class="small">${esc(r.note || '')}</td></tr>`).join('');
   $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)} 회차</h2><p>회차를 누르면 그 회차 숫자로 바뀌어요 · 구분별 가정산/확정은 아래 타일에서 바꿔요</p></div>
       <div class="row gap wrap">
         <button id="btnExportRun">엑셀 다운로드</button><button id="btnSnapAllRun">이미지 일괄저장</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
-      <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${SEGMENTS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
+      <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${STATUS_KEYS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
       <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
     </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
   $('monthDetail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selRun = tr.dataset.id; renderDetail(); });
@@ -476,13 +494,13 @@ function exportXlsx(period, summary, lines, segStatus = blankSt()) {
   const wb = XLSX.utils.book_new();
   const s = summary.segments;
   const KS = Object.keys(s);
-  const aoa = [[`유통사업부 손익매출 ${monthLabel(period)}`], ['단위: 원 · 매출 = B − A − 자점운영비 − 직접지급사은품 · 코드매출+외부유통매출 = 유통매출+직영영업매출'], [], ['항목', ...KS], ['정산 상태', ...KS.map(k => summary.legacy ? '이전 기준' : segStatus[k])]];
+  const aoa = [[`유통사업부 손익매출 ${monthLabel(period)}`], ['단위: 원 · 매출 = B − A − 자점운영비 − 직접지급사은품 · 유통사업부: 코드매출+외부유통매출 = 유통매출+직영영업매출'], [], ['항목', ...KS.map(k => DIST_VIEWS.includes(k) ? `유통사업부 ${k}` : k)], ['정산 상태', ...KS.map(k => summary.legacy ? '이전 기준' : segStatus[statusKeyOf(k)])]];
   for (const [cls, lab, key, sign = 1] of LINES) {
     if (cls === 'sec') { aoa.push([`[${lab}]`]); continue; }
     aoa.push([lab, ...KS.map(k => sign * s[k][key])]);
   }
   if (!summary.legacy) {
-    aoa.push([], ['[검산]'], ['코드매출 + 외부유통매출', summary.total.REV], ['유통매출 + 직영영업매출', summary.total.REV2], ['자점운영비 (별도 표기 · 위 매출에 반영됨)', summary.total.JF]);
+    aoa.push([], ['[유통사업부 검산]'], ['코드매출 + 외부유통매출', summary.total.REV], ['유통매출 + 직영영업매출', summary.total.REV2], ['자점운영비 (별도 표기 · 위 매출에 반영됨)', summary.total.JF]);
   }
   const ws1 = XLSX.utils.aoa_to_sheet(aoa); ws1['!cols'] = [{ wch: 42 }, ...KS.map(() => ({ wch: 16 }))];
   numFmt(ws1); XLSX.utils.book_append_sheet(wb, ws1, '요약');

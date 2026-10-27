@@ -198,7 +198,7 @@ export function summarize(lines) {
     for (const s of SEGMENTS) if (VIEW_FILTER[s](l)) addLine(seg[s], l);
   }
   for (const s of SEGMENTS) finish(seg[s]);
-  const [a, b, c, d] = SEGMENTS.map(k => seg[k]);
+  const [a, b, c, d] = ['코드매출', '외부유통매출', '유통매출', '직영영업매출'].map(k => seg[k]);
   return { segments: seg, total: { REV: a.REV + b.REV, REV2: c.REV + d.REV, JF: a.JF + b.JF } };
 }
 function blank() {

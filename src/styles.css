@@ -373,3 +373,22 @@ body.snapping .stt { background: transparent; }
 .sum-check .eq{font-weight:700;color:var(--muted)}
 .sum-check .jfnote{margin-left:auto;color:var(--muted);font-size:12px}
 @media (max-width:720px){.sum-check .jfnote{margin-left:0;flex-basis:100%}}
+
+/* 유통사업부 4분류 카드 (타일 묶음) */
+.kpi-col { grid-template-rows: none; height: auto; align-content: start; }
+.kpi-grp { background: var(--blue); color: #fff; border-radius: 16px; padding: 16px 18px; display: grid; gap: 6px; position: relative; cursor: pointer; }
+.kpi-grp .kpi-value { margin-top: 2px; font-size: clamp(18px, 1.6vw, 23px); }
+.kpi-grp .kpi-note { font-size: 11.5px; }
+.kpi-subs { display: grid; gap: 4px; margin: 4px 0 2px; }
+.kpi-sub { all: unset; box-sizing: border-box; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 10px; border-radius: 10px; background: rgba(255,255,255,.14); transition: background .15s; position: relative; }
+.kpi-sub:hover { background: rgba(255,255,255,.24); }
+.kpi-sub:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+.kpi-sub.hot { background: var(--orange); box-shadow: 0 6px 16px rgba(247,115,27,.3); }
+.kpi-sub .sl { display: grid; font-size: 12.5px; font-weight: 700; line-height: 1.25; }
+.kpi-sub .sl small { font-size: 10.5px; font-weight: 600; opacity: .8; }
+.kpi-sub .sv { font-size: 13.5px; font-weight: 800; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kpi-sub .sv.neg { color: #fff; }
+.sub-eq { font-size: 11px; font-weight: 700; text-align: center; opacity: .85; padding: 1px 0; }
+@media (min-width: 1101px) { .kpi-col .kpi-sub.hot::after { content: ""; position: absolute; right: -25px; top: 50%; width: 14px; height: 14px; border-radius: 3px; background: var(--orange); transform: translateY(-50%) rotate(45deg); } }
+@media (max-width: 1100px) { .kpi-grp { grid-column: 1 / -1; } }
+body.snapping .kpi-sub { letter-spacing: 0; }
