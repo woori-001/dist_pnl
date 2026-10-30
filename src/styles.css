@@ -414,3 +414,29 @@ body.snapping .sub-sum span, body.snapping .sub-sum b { letter-spacing: 0; }
 .jf-out > div { display: flex; justify-content: space-between; align-items: center; font-size: 14px; }
 .jf-out > div span { font-weight: 800; font-variant-numeric: tabular-nums; }
 .jf-out p { margin: 0; font-size: 12px; color: var(--muted); }
+
+/* 평가손익 입력값 */
+.ev-panel { display: grid; gap: 12px; }
+.ev-tbl th:first-child { text-align: left; white-space: nowrap; }
+.ev-tbl th.ref, .ev-tbl td.ref { background: #f3f4f7; color: var(--muted); }
+.ev-tbl tr.total th, .ev-tbl tr.total td { background: var(--soft); font-weight: 800; }
+.copy-n { all: unset; cursor: copy; padding: 2px 4px; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.copy-n:hover { background: var(--soft); outline: 1px dashed var(--blue); }
+.copy-n:focus-visible { outline: 2px solid var(--blue); }
+.ev-more > summary { cursor: pointer; list-style: none; padding: 2px 0; }
+.ev-more > summary::-webkit-details-marker { display: none; }
+.ev-more > summary::before { content: "▸"; display: inline-block; margin-right: 6px; transition: transform .15s; color: var(--muted); }
+.ev-more[open] > summary::before { transform: rotate(90deg); }
+details.panel.ev-more { display: grid; gap: 10px; }
+.ev-bulk { margin: 6px 0; align-items: center; }
+.ev-gift td { white-space: nowrap; }
+.pick { display: inline-flex; gap: 2px; background: var(--bg); border-radius: 8px; padding: 2px; }
+.pick label { flex-direction: row; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; color: var(--muted); padding: 3px 8px; border-radius: 6px; cursor: pointer; }
+.pick input { margin: 0; accent-color: var(--blue); }
+.pick label:has(input:checked) { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(20,26,38,.12); }
+#calcEval, #runEval, .ev-panel, details.ev-more { min-width: 0; max-width: 100%; }
+.ev-panel .tbl-wrap, details.ev-more .tbl-wrap { overflow-x: auto; max-width: 100%; }
+details.ev-more .tbl-wrap { max-height: 520px; overflow-y: auto; }
+details.panel.ev-more, .ev-panel { grid-template-columns: minmax(0, 1fr); }
+.ev-tbl th, .ev-tbl td { padding: 10px 8px; font-size: 13px; white-space: nowrap; }
+.ev-tbl .copy-n { padding: 2px 2px; }

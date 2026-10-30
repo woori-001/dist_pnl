@@ -5,7 +5,7 @@ const SIDE_BY_SHEET = { '상부정산관리': '상부', '전체정산관리': '�
 const NEED = ['정산종류', '협력점', '상부점', '상품명', '개통일', '정산예정일', '정산금액',
   '약정금액', '수납', '번들수수료', '동판수수료'];
 const DEDUCT = ['사은품', '물류', '쿠폰', '선납', '할인탭', '미비서류', '기타'];
-const OPTIONAL = ['접수일', '가입서비스', '상품옵션', '셋트유형', '사은품지급처', '지급완료'];
+const OPTIONAL = ['접수일', '가입서비스', '상품옵션', '셋트유형', '사은품지급처', '지급완료', '현금', '개통상태', '고객명', 'No'];
 
 const num = v => (v === null || v === undefined || v === '') ? 0 : Math.round(Number(String(v).replace(/,/g, '')) || 0);
 const str = v => (v === null || v === undefined) ? '' : String(v).trim();
@@ -46,7 +46,11 @@ export function parseWorkbook(XLSX, data, fileName) {
       opt: idx['상품옵션'] === undefined ? '' : str(a[idx['상품옵션']]),
       set: idx['셋트유형'] === undefined ? '' : str(a[idx['셋트유형']]),
       giftPayer: idx['사은품지급처'] === undefined ? '' : str(a[idx['사은품지급처']]),
-      giftDone: idx['지급완료'] === undefined ? '' : str(a[idx['지급완료']]),
+      giftDone: idx['지급완료'] === undefined ? '' : str(a[idx['지급완료']]).slice(0, 10),
+      giftCash: idx['현금'] === undefined ? 0 : num(a[idx['현금']]),   // 사은품 쪽 '현금'(실제 지급액)
+      status: idx['개통상태'] === undefined ? '' : str(a[idx['개통상태']]),
+      customer: idx['고객명'] === undefined ? '' : str(a[idx['고객명']]), // 화면 확인용 (서버에 저장하지 않음)
+      no: idx['No'] === undefined ? '' : str(a[idx['No']]),
     });
   }
   return { fileName, side, rows, fileTotal };
@@ -85,7 +89,7 @@ export function jajeomFeeOf(row) {
   const hit = RULES.jajeomFees.filter(f => f.name === cat && f.from <= date).sort((a, b) => b.from.localeCompare(a.from))[0];
   return hit ? hit.amount : 0;
 }
-function itemOf(row) {
+export function itemOf(row) {
   if (row.kind === '환수') return '환수';
   if (row.product.includes(RULES.mgmtProductKeyword)) return '관리수수료';
   if (row.product.includes(RULES.settleProductKeyword)) return '정산관련';

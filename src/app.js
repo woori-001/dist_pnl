@@ -2,6 +2,7 @@ import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js
 import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
 import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js';
 import { parseWorkbook, compute, summarize, byUpper } from './calc.js';
+import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
@@ -219,6 +220,7 @@ $('btnCalc').onclick = () => {
   const allOk = checks.files.every(f => f.totalOk);
   compactUpload(true, { html: `${warn.length ? '' : '<span class="okline">✓ 점검 통과</span> · '}${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치 있음</b>'} · 계산에 쓴 행 ${checks.usedRows.toLocaleString()}건${checks.otherDept ? ` · 상부점 없는 행 ${checks.otherDept.toLocaleString()}건 제외` : ''}` });
   $('calcSummary').innerHTML = renderSummary(summary, monthLabel(period), state.segStatus);
+  state.giftChoices = {}; state.result.eval = computeEval(state.files, period, state.giftChoices); renderEvalCalc();
   $('calcUpper').innerHTML = renderUpper(byUpper(lines));
   $('calcResult').hidden = false; $('btnSave').textContent = '이 달 결과 저장';
 };
@@ -234,14 +236,14 @@ $('btnSave').onclick = async () => {
   const files = state.files.map(f => ({ name: f.fileName, side: f.side, rows: f.rows.length, total: f.fileTotal }));
   const rules = { version: RULES.version, checks: { usedRows: r.checks.usedRows, outOfPeriod: r.checks.outOfPeriod, otherDept: r.checks.otherDept, warnings: r.checks.warnings } };
   const { error } = await sb.rpc('dist_pnl_save_run2', { p_period: periodDate, p_seg_status: st, p_note: null,
-    p_files: files, p_summary: r.summary, p_rules: rules, p_lines: r.lines });
+    p_files: files, p_summary: { ...r.summary, eval: r.eval ? evalForSave(r.eval) : null }, p_rules: rules, p_lines: r.lines });
   $('btnSave').disabled = false;
   if (error) { $('btnSave').textContent = '이 달 결과 저장'; toast('저장 실패: ' + error.message); return; }
   $('btnSave').textContent = '✓ 저장됨';
   const nConf = STATUS_KEYS.filter(k => st[k] === '확정').length;
   toast(`${monthLabel(r.period)} 저장 완료 · ${nConf === STATUS_KEYS.length ? '전체 확정' : nConf ? `확정 ${nConf}/${STATUS_KEYS.length}` : '가정산'} — 월별 내역에서 볼 수 있어요`); loadRuns();
 };
-$('btnExportCalc').onclick = () => { const r = state.result; if (r) exportXlsx(r.period, r.summary, r.lines, state.segStatus); };
+$('btnExportCalc').onclick = () => { const r = state.result; if (r) exportXlsx(r.period, r.summary, r.lines, state.segStatus, r.eval); };
 
 // ---------- 요약 화면 ----------
 const LINES = [ // 엑셀 내보내기용 (전체 항목)
@@ -337,6 +339,66 @@ document.addEventListener('click', async e => {
   if (tile) { detailSeg = tile.dataset.seg; rerenderSummary(host); return; }
   const grp = e.target.closest('.kpi-grp');
   if (grp && !DIST_VIEWS.includes(detailSeg)) { detailSeg = DIST_VIEWS[0]; rerenderSummary(host); }
+});
+// ---------- 평가손익 입력값 ----------
+const PICK = [['ded', '차감 금액'], ['paid', '지급 금액'], ['none', '넣지 않음']];
+function renderEval(ev, title, live) {
+  const n = v => v == null ? '-' : Math.round(v).toLocaleString('ko-KR');
+  const cell = v => `<td class="n"><button type="button" class="copy-n" data-copy="${Math.round(v || 0)}" title="눌러서 복사">${won(v)}</button></td>`;
+  const head = EVAL_COLS.map(c => `<th class="n${c[0] === 'expect' ? ' ref' : ''}" title="${esc(c[2])}">${c[1]}</th>`).join('');
+  const row = (lab, t, cls = '') => `<tr class="${cls}"><th>${lab}</th>${EVAL_COLS.map(c => c[0] === 'expect' ? `<td class="n ref">${won(t[c[0]])}</td>` : cell(t[c[0]])).join('')}</tr>`;
+  const notes = [];
+  if (ev.ratesMissing && ev.ratesMissing.length) notes.push(`기대관리 단가 확인 중 — ${ev.ratesMissing.join(', ')} (금액 0으로 계산, 단가가 정해지면 rules.js에 넣으면 돼요)`);
+  if (ev.expectHold) notes.push(`기대관리 보류 ${ev.expectHold.toLocaleString()}건 — 약정갱신·업셀링/전환 상품 (넣을지 확인 중)`);
+  const pend = live ? ev.giftPending : ev.gift && ev.gift.pending;
+  if (pend) notes.push(`사은품 확인 ${pend}건이 아직 '넣지 않음'이에요 — 아래 목록에서 넣을 금액을 골라 주세요`);
+  if (RULES.evalNotJajeomPrefixes.length) notes.push(`0.영업정산은 자점 제외에서 빼고 넣었어요 (관리수수료·정산관련 입력용 · 확인 중)`);
+  const exp = (ev.expectRows || []).map(e => `<tr><td>${e.carrier}</td><td>${e.type}</td><td class="n">${e.cnt.toLocaleString()}</td><td class="n">${e.rate == null ? '<span class="muted">확인 중</span>' : n(e.rate)}</td><td class="n">${e.months}</td><td class="n">${e.amount == null ? '<span class="muted">-</span>' : won(e.amount)}</td></tr>`).join('');
+  let gifts = '';
+  if (live && ev.giftList.length) {
+    const sum = (k) => ev.giftList.reduce((s, g) => s + (g[k] || 0), 0);
+    gifts = `<details class="panel ev-more" ${ev.giftPending ? 'open' : ''}><summary><b>사은품 확인 ${ev.giftList.length}건</b><span class="muted small"> · 차감_사은품과 사은품 지급(현금+지급완료일)이 안 맞는 건 · 고른 금액이 사은품에 들어가요</span></summary>
+      <div class="row gap wrap ev-bulk"><span class="small muted">한꺼번에:</span>${PICK.map(([k, l]) => `<button type="button" class="small-btn" data-giftall="${k}">모두 ${l}</button>`).join('')}
+        <span class="small muted">차감 합 ${n(sum('ded'))} · 지급 합 ${n(sum('paid'))}</span></div>
+      <div class="tbl-wrap"><table class="grid ev-gift"><tr><th>구분</th><th>내용</th><th>협력점</th><th>고객</th><th>개통일</th><th>상품</th><th>지급처</th><th>지급완료</th><th class="n">차감</th><th class="n">지급</th><th>넣을 금액</th></tr>
+      ${ev.giftList.map((g, i) => `<tr><td>${g.seg === '코드매출' ? '코드' : '외부'}</td><td class="small">${esc(g.why)}</td><td class="small">${esc(g.partner)}</td><td class="small">${esc(g.customer)}</td><td class="small">${esc(g.openDate)}</td><td class="small">${esc(g.product)}</td><td class="small">${esc(g.payer)}</td><td class="small">${esc(g.done || '-')}</td><td class="n">${n(g.ded)}</td><td class="n">${g.paid == null ? '-' : n(g.paid)}</td>
+        <td><div class="pick" role="radiogroup">${PICK.filter(([k]) => k !== 'paid' || g.paid != null).map(([k, l]) => `<label><input type="radio" name="gp${i}" data-gift="${esc(g.key)}" value="${k}" ${g.pick === k ? 'checked' : ''}>${l}</label>`).join('')}</div></td></tr>`).join('')}</table></div></details>`;
+  } else if (!live && ev.gift && ev.gift.checked) {
+    const pk = ev.gift.picks || {};
+    gifts = `<p class="muted small" style="margin:0">사은품 확인 ${ev.gift.checked}건 — 차감 금액 ${pk.ded || 0} · 지급 금액 ${pk.paid || 0} · 넣지 않음 ${pk.none || 0}건으로 저장됨</p>`;
+  }
+  return `<div class="panel ev-panel"><div class="panel-head"><div><h2>${esc(title)} · 평가손익 입력값 <span class="pill">유통사업부</span></h2><p>경영지원 '배분 전·배분 후 손익'의 유통사업부 › 코드매출 / 외부유통매출 칸에 넣을 숫자예요 · 숫자를 누르면 복사돼요</p></div></div>
+    ${notes.length ? `<div class="warns">${notes.map(x => `<div class="notice warn">⚠ ${esc(x)}</div>`).join('')}</div>` : ''}
+    <div class="tbl-wrap"><table class="grid ev-tbl"><tr><th>구분</th>${head}</tr>${EVAL_ROWS.map(k => row(k, ev.rows[k])).join('')}${row('유통사업부 합계', ev.total, 'total')}</table></div>
+    <p class="muted small" style="margin:0">협력점이 자점인 건은 빼고, 사은품과 기대관리만 자점을 포함해요 · 발생수수료 = 상부정산 일반·추가(관리수수료 제외, 정산관련 포함) + 기대관리 · 사은품 = 현금+물류+쿠폰(일반 건, 유치자지급 제외)</p>
+    <details class="ev-more"><summary><b>기대관리 내역</b><span class="muted small"> · 상부정산 코드 · 일반 · 해지 제외 · 자점 포함 · 건수 × 월 단가 × ${RULES.expectMonths}개월</span></summary>
+      <div class="tbl-wrap"><table class="grid"><tr><th>통신사</th><th>유형</th><th class="n">건수</th><th class="n">월 단가</th><th class="n">개월</th><th class="n">기대관리</th></tr>${exp || '<tr><td colspan="6" class="muted">해당 없음</td></tr>'}</table></div></details>
+  </div>${gifts}`;
+}
+function renderEvalCalc() {
+  const r = state.result; if (!r || !r.eval) { $('calcEval').innerHTML = ''; return; }
+  $('calcEval').innerHTML = renderEval(r.eval, monthLabel(r.period), true);
+}
+function recomputeEval() {
+  const r = state.result; if (!r) return;
+  const keepOpen = [...$('calcEval').querySelectorAll('details')].map(d => d.open);
+  r.eval = computeEval(state.files, r.period, state.giftChoices); renderEvalCalc();
+  [...$('calcEval').querySelectorAll('details')].forEach((d, i) => { if (keepOpen[i] !== undefined) d.open = keepOpen[i]; });
+  $('btnSave').textContent = '이 달 결과 저장';
+}
+document.addEventListener('change', e => {
+  const el = e.target.closest('input[data-gift]'); if (!el) return;
+  state.giftChoices[el.dataset.gift] = el.value; recomputeEval();
+});
+document.addEventListener('click', async e => {
+  const all = e.target.closest('[data-giftall]');
+  if (all && state.result && state.result.eval) {
+    for (const g of state.result.eval.giftList) state.giftChoices[g.key] = (all.dataset.giftall === 'paid' && g.paid == null) ? 'none' : all.dataset.giftall;
+    recomputeEval(); return;
+  }
+  const c = e.target.closest('.copy-n'); if (!c) return;
+  try { await navigator.clipboard.writeText(c.dataset.copy); toast(`${Number(c.dataset.copy).toLocaleString('ko-KR')} 복사했어요`); }
+  catch { toast('복사하지 못했어요 — 숫자를 직접 선택해 복사하세요'); }
 });
 // ---------- 이미지 저장 (구분 타일 + 결과표) ----------
 let h2cLoading = null;
@@ -477,7 +539,7 @@ async function renderDetail() {
         <button id="btnExportRun">엑셀 다운로드</button><button id="btnSnapAllRun">이미지 일괄저장</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
       <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${STATUS_KEYS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
       <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
-    </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
+    </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div><div id="runEval" class="stack-lg"></div>`;
   $('monthDetail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selRun = tr.dataset.id; renderDetail(); });
   if (state.scrollDetail) { state.scrollDetail = false; $('monthDetail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   $('btnDelRun').onclick = async () => {
@@ -492,12 +554,14 @@ async function renderDetail() {
   const segStatus = Object.fromEntries(segsOf(run).map(k => [k, segSt(run, k)]));
   state.detail = { summary, lines, title: monthLabel(p), segStatus, runId: run.id, period: p };
   $('runBody').innerHTML = renderSummary(summary, state.detail.title, segStatus) + renderUpper(byUpper(lines));
-  $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, segStatus);
+  const savedEval = run.summary && run.summary.eval;
+  $('runEval').innerHTML = savedEval ? renderEval(savedEval, monthLabel(p), false) : '';
+  $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, segStatus, savedEval);
   $('btnSnapAllRun').onclick = () => snapAll('runBody', monthLabel(p), $('btnSnapAllRun'));
 }
 
 // ---------- 엑셀 내보내기 ----------
-function exportXlsx(period, summary, lines, segStatus = blankSt()) {
+function exportXlsx(period, summary, lines, segStatus = blankSt(), ev = null) {
   const wb = XLSX.utils.book_new();
   const s = summary.segments;
   const KS = Object.keys(s);
@@ -516,6 +580,22 @@ function exportXlsx(period, summary, lines, segStatus = blankSt()) {
   numFmt(ws2); XLSX.utils.book_append_sheet(wb, ws2, '상부점별');
   const raw = lines.map(l => ({ 상부구분: l.segment, 상부점: l.upper_name, 측: l.side, 항목: l.item, 하부구분: l.partner_type, 포함: l.included ? 'Y' : 'N', 건수: l.cnt, 정산금액: l.amount, 사은품현금: l.gift_cash, 사은품물류: l.gift_goods, 사은품쿠폰: l.gift_coupon, 직접지급사은품: l.direct_gift ?? 0, 자점운영비: l.jj_fee || 0 }));
   const ws3 = XLSX.utils.json_to_sheet(raw); numFmt(ws3); XLSX.utils.book_append_sheet(wb, ws3, '집계데이터');
+  if (ev) {
+    const cols = EVAL_COLS;
+    const aoaE = [[`평가손익 입력값 · 유통사업부 ${monthLabel(period)}`], ['단위: 원 · 협력점 자점 제외(사은품·기대관리는 자점 포함) · 기대관리는 발생수수료에 포함'], [],
+      ['구분', ...cols.map(c => c[1])],
+      ...EVAL_ROWS.map(k => [k, ...cols.map(c => ev.rows[k][c[0]])]), ['유통사업부 합계', ...cols.map(c => ev.total[c[0]])], [],
+      ...cols.map(c => [c[1], c[2]])];
+    if (ev.ratesMissing && ev.ratesMissing.length) aoaE.push([], ['기대관리 단가 확인 중 (금액 0으로 계산)', ev.ratesMissing.join(', ')]);
+    const wsE = XLSX.utils.aoa_to_sheet(aoaE); wsE['!cols'] = [{ wch: 18 }, ...cols.map(() => ({ wch: 16 }))]; numFmt(wsE);
+    XLSX.utils.book_append_sheet(wb, wsE, '평가손익');
+    const wsX = XLSX.utils.json_to_sheet((ev.expectRows || []).map(e => ({ 통신사: e.carrier, 유형: e.type, 건수: e.cnt, '월 단가': e.rate ?? '확인 중', 개월: e.months, 기대관리: e.amount ?? 0 })));
+    numFmt(wsX); XLSX.utils.book_append_sheet(wb, wsX, '기대관리');
+    if (ev.giftList) {
+      const wsG = XLSX.utils.json_to_sheet(ev.giftList.map(g => ({ 구분: g.seg, 내용: g.why, 협력점: g.partner, 고객명: g.customer, 개통일: g.openDate, 상품명: g.product, 지급처: g.payer, 지급완료: g.done, 차감금액: g.ded, 지급금액: g.paid, 선택: { ded: '차감 금액', paid: '지급 금액', none: '넣지 않음' }[g.pick] })));
+      numFmt(wsG); XLSX.utils.book_append_sheet(wb, wsG, '사은품확인');
+    }
+  }
   XLSX.writeFile(wb, `유통사업부_손익매출_${period}.xlsx`);
 }
 function numFmt(ws) {
