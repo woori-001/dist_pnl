@@ -21,12 +21,12 @@ const blank = () => ({ issue: 0, issueBase: 0, expect: 0, mgmt: 0, refundUp: 0, 
 export function expectKind(product) {
   const p = (product || '').replace(/\s+/g, '');
   if (/정산관련|추가지급|_관리$/.test(p)) return null;
-  if (RULES.expectHoldKeywords.some(k => p.includes(k))) return { hold: true };
   const mob = p.match(/^모바일_(.+)$/);
   if (mob) return RULES.expectFees[mob[1]] ? { carrier: mob[1], type: '유심' } : null;
   let carrier = p.split('_')[0], rest = p.slice(p.indexOf('_') + 1);
   if (carrier === '유선기타') { const m = rest.match(/^\((SK|KT)-biz\)/); if (!m) return null; carrier = m[1] === 'SK' ? 'SKB' : 'KT'; rest = rest.replace(/^\([^)]*\)/, ''); }
   if (!RULES.expectFees[carrier]) return null;
+  if (RULES.expectHoldKeywords.some(k => rest.includes(k))) return { hold: true };
   // 코드실적 계산기와 같은 순서: CCTV·인터넷전화·일반전화를 먼저 거르고, TV를 인터넷보다 먼저
   if (/CCTV/i.test(rest) || /인터넷전화/.test(rest) || /일반전화|^전화$/.test(rest)) return null;
   if (/TV/.test(rest)) return { carrier, type: 'TV' };
