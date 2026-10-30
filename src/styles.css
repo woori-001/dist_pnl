@@ -440,3 +440,7 @@ details.ev-more .tbl-wrap { max-height: 520px; overflow-y: auto; }
 details.panel.ev-more, .ev-panel { grid-template-columns: minmax(0, 1fr); }
 .ev-tbl th, .ev-tbl td { padding: 10px 8px; font-size: 13px; white-space: nowrap; }
 .ev-tbl .copy-n { padding: 2px 2px; }
+.ev-tbl { width: 100%; table-layout: fixed; }
+.ev-tbl th:first-child { width: 104px; }
+.ev-tbl th, .ev-tbl td { padding: 10px 6px; font-size: 12.5px; letter-spacing: -0.01em; }
+.ev-tbl th.n { white-space: normal; line-height: 1.25; }

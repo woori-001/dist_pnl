@@ -44,11 +44,11 @@ function show(view) {
   if (view === 'viewApp') setTitle(...PAGE[currentTab]);
 }
 const PAGE = {
-  calc: ['손익매출 계산하기', '어드민 가져오기 버튼이나 엑셀로 대상월 매출을 4분류로 계산해요 · 매출 = 상부(B) − 전체(A) − 자점운영비 − 직접지급사은품'],
+  calc: ['유통사업부 코드매출·외부유통매출', ''],
   history: ['월별 내역', '달력에서 달을 누르면 그 달의 가정산·확정 내역이 열려요'],
 };
 let currentTab = 'calc';
-function setTitle(t, sub) { $('pageTitle').textContent = t; $('pageSub').textContent = sub; }
+function setTitle(t, sub) { $('pageTitle').textContent = t; $('pageSub').textContent = sub; $('pageSub').hidden = !sub; }
 
 // ---------- 로그인 ----------
 async function boot() {
@@ -96,7 +96,7 @@ $('btnClear').onclick = () => { state.files = []; state.result = null; renderFil
 function compactUpload(on, info = {}) {
   $('uploadCard').classList.toggle('compact', on);
   $('uploadBody').hidden = on;
-  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on; $('btnSave').hidden = !on; $('btnExportCalc').hidden = !on; $('btnSnapAllCalc').hidden = !on;
+  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on; $('btnSave').hidden = !on; $('btnExportCalc').hidden = true; $('btnSnapAllCalc').hidden = true;
   $('btnToggleFiles').textContent = '파일 목록 보기';
   $('uploadTitle').textContent = on ? `${monthLabel($('period').value)} · 계산에 쓴 파일 ${state.files.length}개` : '엑셀로 계산하기';
   $('uploadSub').innerHTML = on ? info.html : '어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.';
@@ -219,9 +219,9 @@ $('btnCalc').onclick = () => {
   $('calcChecks').hidden = !warn.length;
   const allOk = checks.files.every(f => f.totalOk);
   compactUpload(true, { html: `${warn.length ? '' : '<span class="okline">✓ 점검 통과</span> · '}${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치 있음</b>'} · 계산에 쓴 행 ${checks.usedRows.toLocaleString()}건${checks.otherDept ? ` · 상부점 없는 행 ${checks.otherDept.toLocaleString()}건 제외` : ''}` });
-  $('calcSummary').innerHTML = renderSummary(summary, monthLabel(period), state.segStatus);
+  $('calcSummary').innerHTML = renderSummary(summary, monthLabel(period), state.segStatus, { toggles: false });
   state.giftChoices = {}; state.result.eval = computeEval(state.files, period, state.giftChoices); renderEvalCalc();
-  $('calcUpper').innerHTML = renderUpper(byUpper(lines));
+  $('calcUpper').innerHTML = '';
   $('calcResult').hidden = false; $('btnSave').textContent = '이 달 결과 저장';
 };
 
@@ -262,13 +262,15 @@ const LINES = [ // 엑셀 내보내기용 (전체 항목)
 const SEG_NOTE = { '코드매출': '협력점·자점 / 코드', '외부유통매출': '협력점·자점 / 이관', '유통매출': '협력점 / 코드·이관', '직영영업매출': '자점 / 코드·이관',
   'SKB웨이브넷': '코드 · 자점 포함', 'SKY우리정보': '코드 · 자점 포함', 'SK매직': '코드 · 자점 포함' };
 let detailSeg = SEGMENTS[0];
-function renderSummary(summary, title, segStatus = blankSt()) {
+const SHOW_VIEWS = ['코드매출', '외부유통매출']; // 화면에 보이는 유통사업부 항목 (유통매출·직영영업매출·SKB·SKY·매직은 계산만 하고 숨김)
+function renderSummary(summary, title, segStatus = blankSt(), opts = {}) {
   const s = summary.segments;
   const keys = Object.keys(s), legacy = !!summary.legacy;
-  if (!keys.includes(detailSeg)) detailSeg = keys[0];
+  const allowed = legacy ? keys : SHOW_VIEWS;
+  if (!allowed.includes(detailSeg)) detailSeg = allowed[0];
   const kv = v => `${Math.round(v || 0).toLocaleString('ko-KR')}<small>원</small>`;
   const man1 = v => `${Math.round(v || 0).toLocaleString('ko-KR')}`;
-  const stt = k => legacy ? '' : `<div class="stt" role="group" aria-label="${k} 정산 상태">${ST.map(x => `<button type="button" data-st="${x}" class="${segStatus[k] === x ? 'on ' + x : ''}" aria-pressed="${segStatus[k] === x}">${x}</button>`).join('')}</div>`;
+  const stt = k => (legacy || opts.toggles === false) ? '' : `<div class="stt" role="group" aria-label="${k} 정산 상태">${ST.map(x => `<button type="button" data-st="${x}" class="${segStatus[k] === x ? 'on ' + x : ''}" aria-pressed="${segStatus[k] === x}">${x}</button>`).join('')}</div>`;
   const jfNote = k => s[k].JF ? ` · 자점운영비 −${man1(s[k].JF)}` : '';
   const tile = k => `<div class="kpi kpi-btn${k === detailSeg ? ' hot' : ''}" data-seg="${k}" ${legacy ? '' : `data-stk="${k}"`} role="tab" tabindex="0" aria-selected="${k === detailSeg}">
       <div class="kpi-top"><div class="kpi-label">${k}</div>${stt(k)}</div>
@@ -288,9 +290,8 @@ function renderSummary(summary, title, segStatus = blankSt()) {
     left = `<div class="kpi-grp${DIST_VIEWS.includes(detailSeg) ? ' on' : ''}" data-stk="유통사업부">
         <div class="kpi-top"><div class="kpi-label">유통사업부</div>${stt('유통사업부')}</div>
         <div class="kpi-value">${kv(tot.REV)}</div>
-        <div class="kpi-subs">${sub('코드매출')}${sub('외부유통매출')}${sumLine('코드매출+외부유통매출', tot.REV)}${sub('유통매출')}${sub('직영영업매출')}${sumLine('유통매출+직영영업매출', tot.REV2, same)}</div>
-        <div class="kpi-note">자점운영비 ${man1(tot.JF)} 별도 · 위 금액에 미반영</div>
-      </div>` + CODE_VIEWS.map(tile).join('');
+        <div class="kpi-subs">${SHOW_VIEWS.map(sub).join('')}</div>
+      </div>`;
   }
   const t = s[detailSeg];
   const stKey = legacy ? null : statusKeyOf(detailSeg);
@@ -313,12 +314,12 @@ function renderSummary(summary, title, segStatus = blankSt()) {
   const name = DIST_VIEWS.includes(detailSeg) ? `유통사업부 ${detailSeg}` : detailSeg;
   const head = legacy ? `<div class="notice warn">이전 기준(유통이관·SKB·SKY·매직)으로 저장된 회차예요. 유통사업부 4분류로 보려면 이 달을 다시 계산해서 저장하세요.</div>` : '';
   return `${head}<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${left}</div>
-    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${name}${stKey ? ` <span class="pill ${segStatus[stKey]}">${segStatus[stKey]}</span>` : ''}</h2></div><button type="button" class="small-btn js-snap" data-name="${esc(title)}_${detailSeg}">이미지 저장</button></div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${name}${stKey ? ` <span class="pill ${segStatus[stKey]}">${segStatus[stKey]}</span>` : ''}</h2></div></div>
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
 function rerenderSummary(host) {
-  if (host.id === 'calcSummary' && state.result) host.innerHTML = renderSummary(state.result.summary, monthLabel(state.result.period), state.segStatus);
-  else if (host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title, state.detail.segStatus) + renderUpper(byUpper(state.detail.lines));
+  if (host.id === 'calcSummary' && state.result) host.innerHTML = renderSummary(state.result.summary, monthLabel(state.result.period), state.segStatus, { toggles: false });
+  else if (host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title, state.detail.segStatus);
 }
 document.addEventListener('click', async e => {
   const host = e.target.closest('#calcSummary, #runBody'); if (!host) return;
@@ -538,7 +539,7 @@ async function renderDetail() {
         <button id="btnExportRun">엑셀 다운로드</button><button id="btnSnapAllRun">이미지 일괄저장</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
       <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${STATUS_KEYS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
       <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
-    </div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div><div id="runEval" class="stack-lg"></div>`;
+    </div><div id="runEval" class="stack-lg"></div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
   $('monthDetail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selRun = tr.dataset.id; renderDetail(); });
   if (state.scrollDetail) { state.scrollDetail = false; $('monthDetail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   $('btnDelRun').onclick = async () => {
@@ -552,7 +553,7 @@ async function renderDetail() {
   const summary = summarize(lines);
   const segStatus = Object.fromEntries(segsOf(run).map(k => [k, segSt(run, k)]));
   state.detail = { summary, lines, title: monthLabel(p), segStatus, runId: run.id, period: p };
-  $('runBody').innerHTML = renderSummary(summary, state.detail.title, segStatus) + renderUpper(byUpper(lines));
+  $('runBody').innerHTML = renderSummary(summary, state.detail.title, segStatus);
   const savedEval = run.summary && run.summary.eval;
   $('runEval').innerHTML = savedEval ? renderEval(savedEval, monthLabel(p), false) : '';
   $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, segStatus, savedEval);
