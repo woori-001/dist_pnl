@@ -8,7 +8,9 @@ const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
 const XLSX = window.XLSX;
 
-const state = { files: [], result: null, runs: [], selPeriod: null, selRun: null, year: new Date().getFullYear(), segStatus: null };
+const prevMonth = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+// period = 왼쪽 달력에서 고른 달 · mode: 'upload'(파일 올리기) / 'calc'(방금 계산한 결과) / 'saved'(저장된 결과)
+const state = { files: [], result: null, runs: [], period: prevMonth, mode: 'upload', selRun: null, year: +prevMonth.slice(0, 4), segStatus: null, view: null, showFiles: false, pulledAt: null };
 const ST = ['가정산', '확정'];
 const segSt = (run, k) => (run.seg_status && run.seg_status[k]) || run.status || '가정산';
 const blankSt = () => Object.fromEntries(STATUS_KEYS.map(k => [k, '가정산']));
@@ -37,17 +39,16 @@ function ask(msg) {
 }
 function show(view) {
   for (const v of ['viewLogin', 'viewDenied', 'viewApp']) $(v).hidden = v !== view;
-  $('nav').hidden = view !== 'viewApp';
   $('bmCard').hidden = view !== 'viewApp' || location.hash.includes('admin-import');
   $('ruleCard').hidden = view !== 'viewApp';
+  $('rail').hidden = view !== 'viewApp';
   if (view === 'viewLogin') setTitle('유통 손익매출 계산기', '로그인하면 계산·저장할 수 있어요');
-  if (view === 'viewApp') setTitle(...PAGE[currentTab]);
+  if (view === 'viewApp') setTitle(...PAGE.calc);
 }
 const PAGE = {
   calc: ['유통사업부 코드매출·외부유통매출', ''],
   history: ['월별 내역', '달력에서 달을 누르면 그 달의 가정산·확정 내역이 열려요'],
 };
-let currentTab = 'calc';
 function setTitle(t, sub) { $('pageTitle').textContent = t; $('pageSub').textContent = sub; $('pageSub').hidden = !sub; }
 
 // ---------- 로그인 ----------
@@ -62,8 +63,8 @@ async function onSession(session) {
   const { data, error } = await sb.from('dist_pnl_members').select('email').limit(1);
   if (error || !data?.length) { show('viewDenied'); return; }
   show('viewApp');
-  loadRuns();
-  applyAdmin();
+  await loadRuns();
+  if (pendingAdmin) applyAdmin(); else openMonth(state.period);
 }
 $('formLogin').addEventListener('submit', async e => {
   e.preventDefault(); $('loginErr').textContent = '';
@@ -73,18 +74,7 @@ $('formLogin').addEventListener('submit', async e => {
 });
 $('btnLogout').onclick = async () => { await sb.auth.signOut(); onSession(null); };
 
-// ---------- 탭 ----------
-document.querySelectorAll('#nav button').forEach(b => b.onclick = () => {
-  currentTab = b.dataset.tab;
-  document.querySelectorAll('#nav button').forEach(x => x.classList.toggle('on', x === b));
-  document.querySelectorAll('.pane').forEach(p => p.hidden = p.id !== 'pane-' + b.dataset.tab);
-  setTitle(...PAGE[currentTab]);
-  if (b.dataset.tab === 'history') loadRuns();
-});
-
 // ---------- 파일 올리기 ----------
-const prev = new Date(); prev.setDate(1); prev.setMonth(prev.getMonth() - 1);
-$('period').value = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, '0')}`;
 const drop = $('drop');
 drop.onclick = () => $('fileInput').click();
 drop.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') $('fileInput').click(); };
@@ -92,17 +82,12 @@ drop.ondragover = e => { e.preventDefault(); drop.classList.add('over'); };
 drop.ondragleave = () => drop.classList.remove('over');
 drop.ondrop = e => { e.preventDefault(); drop.classList.remove('over'); addFiles(e.dataTransfer.files); };
 $('fileInput').onchange = e => { addFiles(e.target.files); e.target.value = ''; };
-$('btnClear').onclick = () => { state.files = []; state.result = null; renderFiles(); $('calcResult').hidden = true; };
-function compactUpload(on, info = {}) {
-  $('uploadCard').classList.toggle('compact', on);
-  $('uploadBody').hidden = on;
-  $('btnToggleFiles').hidden = !on; $('btnNew').hidden = !on; $('btnSave').hidden = !on; $('btnExportCalc').hidden = true; $('btnSnapAllCalc').hidden = true;
-  $('btnToggleFiles').textContent = '파일 목록 보기';
-  $('uploadTitle').textContent = on ? `${monthLabel($('period').value)} · 계산에 쓴 파일 ${state.files.length}개` : '엑셀로 계산하기';
-  $('uploadSub').innerHTML = on ? info.html : '어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.';
-}
-$('btnToggleFiles').onclick = () => { const open = $('uploadBody').hidden; $('uploadBody').hidden = !open; $('btnToggleFiles').textContent = open ? '파일 목록 접기' : '파일 목록 보기'; };
-$('btnNew').onclick = () => { state.files = []; state.result = null; renderFiles(); $('calcResult').hidden = true; compactUpload(false); };
+$('btnClear').onclick = () => { state.files = []; state.result = null; renderFiles(); refresh(); };
+$('btnToggleFiles').onclick = () => { state.showFiles = !state.showFiles; refresh(); };
+$('btnNew').onclick = async () => {
+  if (state.result && state.mode === 'calc' && !state.resultSaved && !await ask('저장하지 않은 계산 결과가 있어요. 지우고 새로 계산할까요?')) return;
+  state.files = []; state.result = null; state.mode = 'upload'; state.showFiles = false; renderFiles(); refresh();
+};
 
 async function addFiles(fileList) {
   const list = [...fileList]; // FileList는 input 초기화 시 비워지므로 먼저 복사
@@ -113,7 +98,7 @@ async function addFiles(fileList) {
       parsed.size = f.size; state.files.push(parsed);
     } catch (err) { toast(err.message); }
   }
-  state.result = null; $('calcResult').hidden = true; compactUpload(false); renderFiles();
+  state.result = null; state.mode = 'upload'; renderFiles(); refresh();
 }
 function renderFiles() {
   $('btnCalc').disabled = $('btnClear').disabled = !state.files.length;
@@ -128,7 +113,7 @@ function renderFiles() {
       <td><button class="link danger" data-rm="${i}">빼기</button></td></tr>`;
   }).join('');
   $('fileList').innerHTML = `<div class="tbl-wrap"><table class="files"><tr><th>구분</th><th>파일</th><th>정산종류별 건수</th><th>정산금액 합계</th><th>점검</th><th></th></tr>${rows}</table></div>`;
-  $('fileList').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { state.files.splice(+b.dataset.rm, 1); state.result = null; $('calcResult').hidden = true; renderFiles(); });
+  $('fileList').querySelectorAll('[data-rm]').forEach(b => b.onclick = () => { state.files.splice(+b.dataset.rm, 1); state.result = null; state.mode = 'upload'; renderFiles(); refresh(); });
 }
 
 // ---------- 어드민에서 바로 가져오기 (북마클릿 ↔ 이 창 postMessage) ----------
@@ -146,10 +131,10 @@ let waitTimer = null;
 function enterImportMode() {
   if (!location.hash.includes('admin-import')) return;
   importDone = false;
-  $('bmCard').hidden = true; $('uploadCard').hidden = true; $('calcResult').hidden = true;
+  $('bmCard').hidden = true; $('rail').hidden = true; $('viewApp').classList.add('importing');
   adminWait('어드민에서 데이터를 받는 중이에요', '어드민 창에서 엑셀 10개(옛날 데이터 포함)를 만들고 있어요. 1~2분 걸려요. 어드민 창을 닫지 마세요.');
   clearTimeout(waitTimer);
-  waitTimer = setTimeout(() => adminWait('아직 데이터가 오지 않았어요', '어드민 창의 작은 창에 오류가 떠 있는지 확인해 주세요. 엑셀을 직접 올려도 됩니다.', { error: true }) || ($('uploadCard').hidden = false), 4 * 60 * 1000);
+  waitTimer = setTimeout(() => adminWait('아직 데이터가 오지 않았어요', '어드민 창의 작은 창에 오류가 떠 있는지 확인해 주세요. 엑셀을 직접 올려도 됩니다.', { error: true }) || $('viewApp').classList.remove('importing'), 4 * 60 * 1000);
 }
 function announceReady() {
   enterImportMode();
@@ -162,7 +147,7 @@ window.addEventListener('message', e => {
   if (e.data.type === 'dist-pnl-progress') {
     if (importDone) return; // 계산이 끝난 뒤 오는 안내는 무시
     clearTimeout(waitTimer);
-    if (e.data.error) { adminWait('어드민에서 가져오지 못했어요', String(e.data.text || ''), { error: true }); $('uploadCard').hidden = false; }
+    if (e.data.error) { adminWait('어드민에서 가져오지 못했어요', String(e.data.text || ''), { error: true }); $('viewApp').classList.remove('importing'); }
     else adminWait('어드민에서 데이터를 받는 중이에요', String(e.data.text || ''));
     return;
   }
@@ -187,12 +172,10 @@ function applyAdmin() {
   if (!pendingAdmin || $('viewApp').hidden) return;
   const { period, files, pulledAt, errors } = pendingAdmin; pendingAdmin = null;
   if (errors.length) errors.forEach(m => toast(m));
-  $('adminWait').hidden = true; $('uploadCard').hidden = false;
-  document.querySelector('#nav button[data-tab=calc]').click();
-  state.files = files; $('period').value = period;
+  $('adminWait').hidden = true; $('viewApp').classList.remove('importing');
+  state.files = files; state.period = period; state.year = +period.slice(0, 4); state.pulledAt = pulledAt || new Date().toISOString();
   renderFiles();
   $('btnCalc').click();
-  $('uploadSub').insertAdjacentHTML('afterbegin', `<b>어드민에서 가져옴</b> (${new Date(pulledAt || Date.now()).toLocaleString('ko-KR')}) · `);
   history.replaceState(null, '', location.pathname);
   toast('어드민 데이터로 계산했습니다');
 }
@@ -207,22 +190,17 @@ $('bmLink').onclick = e => { e.preventDefault(); toast('클릭하지 말고, 이
 
 // ---------- 계산 ----------
 $('btnCalc').onclick = () => {
-  const period = $('period').value;
-  if (!period) { toast('대상월을 고르세요'); return; }
+  const period = state.period;
+  if (!period) { toast('왼쪽 달력에서 달을 고르세요'); return; }
   const { lines, checks } = compute(state.files, period);
   const summary = summarize(lines);
-  state.result = { period, lines, checks, summary };
+  state.result = { period, lines, checks, summary, pulledAt: state.pulledAt }; state.pulledAt = null; state.resultSaved = false;
   state.segStatus = blankSt();
   const warn = [...checks.warnings];
   if (checks.outOfPeriod) warn.push(`대상월이 아닌 행 ${checks.outOfPeriod.toLocaleString()}건은 계산에서 뺐어요 (월을 잘못 골랐거나 다른 달 파일이 섞였는지 확인)`);
-  $('calcChecks').innerHTML = warn.length ? `<div class="warns">${warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')}</div>` : '';
-  $('calcChecks').hidden = !warn.length;
-  const allOk = checks.files.every(f => f.totalOk);
-  compactUpload(true, { html: `${warn.length ? '' : '<span class="okline">✓ 점검 통과</span> · '}${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치 있음</b>'} · 계산에 쓴 행 ${checks.usedRows.toLocaleString()}건${checks.otherDept ? ` · 상부점 없는 행 ${checks.otherDept.toLocaleString()}건 제외` : ''}` });
-  $('calcSummary').innerHTML = renderSummary(summary, monthLabel(period), state.segStatus, { toggles: false });
-  state.giftChoices = {}; state.result.eval = computeEval(state.files, period, state.giftChoices); renderEvalCalc();
-  $('calcUpper').innerHTML = '';
-  $('calcResult').hidden = false; $('btnSave').textContent = '이 달 결과 저장';
+  state.result.warn = warn;
+  state.giftChoices = {}; state.result.eval = computeEval(state.files, period, state.giftChoices);
+  state.mode = 'calc'; state.showFiles = false; refresh();
 };
 
 $('btnSave').onclick = async () => {
@@ -232,18 +210,17 @@ $('btnSave').onclick = async () => {
   const existing = state.runs.filter(x => ym(x.period) === r.period && !isLegacyRun(x));
   const clash = STATUS_KEYS.filter(k => st[k] === '확정' && existing.some(x => segSt(x, k) === '확정'));
   if (clash.length && !await ask(`${monthLabel(r.period)} ${clash.join(', ')}은(는) 이미 확정된 회차가 있어요. 이번 계산을 확정으로 저장하면 이전 확정은 가정산으로 바뀌어요. 계속할까요?`)) return;
-  $('btnSave').disabled = true; $('btnSave').textContent = '저장 중…';
+  $('btnSave').disabled = true;
   const files = state.files.map(f => ({ name: f.fileName, side: f.side, rows: f.rows.length, total: f.fileTotal }));
   const rules = { version: RULES.version, checks: { usedRows: r.checks.usedRows, outOfPeriod: r.checks.outOfPeriod, otherDept: r.checks.otherDept, warnings: r.checks.warnings } };
   const { error } = await sb.rpc('dist_pnl_save_run2', { p_period: periodDate, p_seg_status: st, p_note: null,
     p_files: files, p_summary: { ...r.summary, eval: r.eval ? evalForSave(r.eval) : null }, p_rules: rules, p_lines: r.lines });
   $('btnSave').disabled = false;
-  if (error) { $('btnSave').textContent = '이 달 결과 저장'; toast('저장 실패: ' + error.message); return; }
-  $('btnSave').textContent = '✓ 저장됨';
-  const nConf = STATUS_KEYS.filter(k => st[k] === '확정').length;
-  toast(`${monthLabel(r.period)} 저장 완료 · ${nConf === STATUS_KEYS.length ? '전체 확정' : nConf ? `확정 ${nConf}/${STATUS_KEYS.length}` : '가정산'} — 월별 내역에서 볼 수 있어요`); loadRuns();
+  if (error) { toast('저장 실패: ' + error.message); return; }
+  state.resultSaved = true;
+  toast(`${monthLabel(r.period)} 가정산으로 저장했어요 — 달력에서 이 달을 누르면 다시 볼 수 있어요`);
+  await loadRuns(); state.selRun = null; openMonth(r.period);
 };
-$('btnExportCalc').onclick = () => { const r = state.result; if (r) exportXlsx(r.period, r.summary, r.lines, state.segStatus, r.eval); };
 
 // ---------- 요약 화면 ----------
 const LINES = [ // 엑셀 내보내기용 (전체 항목)
@@ -317,29 +294,13 @@ function renderSummary(summary, title, segStatus = blankSt(), opts = {}) {
     <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${name}${stKey ? ` <span class="pill ${segStatus[stKey]}">${segStatus[stKey]}</span>` : ''}</h2></div></div>
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
-function rerenderSummary(host) {
-  if (host.id === 'calcSummary' && state.result) host.innerHTML = renderSummary(state.result.summary, monthLabel(state.result.period), state.segStatus, { toggles: false });
-  else if (host.id === 'runBody' && state.detail) host.innerHTML = renderSummary(state.detail.summary, state.detail.title, state.detail.segStatus);
+function rerenderSummary() {
+  const v = state.view; $('calcSummary').innerHTML = v ? renderSummary(v.summary, v.title, v.segStatus, { toggles: false }) : '';
 }
-document.addEventListener('click', async e => {
-  const host = e.target.closest('#calcSummary, #runBody'); if (!host) return;
-  const stBtn = e.target.closest('[data-st]');
-  if (stBtn) {
-    const holder = stBtn.closest('[data-stk]'); if (!holder) return;
-    const key = holder.dataset.stk, to = stBtn.dataset.st;
-    if (host.id === 'calcSummary') { state.segStatus[key] = to; rerenderSummary(host); $('btnSave').textContent = '이 달 결과 저장'; return; }
-    // 저장된 회차: 바로 DB에 반영
-    const d = state.detail; if (!d || d.segStatus[key] === to) return;
-    const others = state.runs.filter(r => ym(r.period) === d.period && r.id !== d.runId && segSt(r, key) === '확정');
-    if (to === '확정' && others.length && !await ask(`${monthLabel(d.period)} ${key}은(는) 다른 회차가 확정되어 있어요. 이 회차를 확정하면 그 회차는 가정산으로 바뀌어요. 계속할까요?`)) return;
-    const { error } = await sb.rpc('dist_pnl_set_seg_status', { p_run: d.runId, p_seg: key, p_status: to });
-    if (error) { toast('변경 실패: ' + error.message); return; }
-    toast(`${key} → ${to}`); await loadRuns(); return;
-  }
+document.addEventListener('click', e => {
+  if (!e.target.closest('#calcSummary')) return;
   const tile = e.target.closest('[data-seg]');
-  if (tile) { detailSeg = tile.dataset.seg; rerenderSummary(host); return; }
-  const grp = e.target.closest('.kpi-grp');
-  if (grp && !DIST_VIEWS.includes(detailSeg)) { detailSeg = DIST_VIEWS[0]; rerenderSummary(host); }
+  if (tile) { detailSeg = tile.dataset.seg; rerenderSummary(); }
 });
 // ---------- 평가손익 입력값 ----------
 const PICK = [['ded', '차감 금액'], ['paid', '지급 금액'], ['none', '넣지 않음']];
@@ -376,15 +337,14 @@ function renderEval(ev, title, live) {
   </div>${gifts}`;
 }
 function renderEvalCalc() {
-  const r = state.result; if (!r || !r.eval) { $('calcEval').innerHTML = ''; return; }
+  const r = state.result; if (!r || !r.eval || state.mode !== 'calc') return;
   $('calcEval').innerHTML = renderEval(r.eval, monthLabel(r.period), true);
 }
 function recomputeEval() {
   const r = state.result; if (!r) return;
   const keepOpen = [...$('calcEval').querySelectorAll('details')].map(d => d.open);
-  r.eval = computeEval(state.files, r.period, state.giftChoices); renderEvalCalc();
+  r.eval = computeEval(state.files, r.period, state.giftChoices); renderEvalCalc(); state.resultSaved = false; renderRail();
   [...$('calcEval').querySelectorAll('details')].forEach((d, i) => { if (keepOpen[i] !== undefined) d.open = keepOpen[i]; });
-  $('btnSave').textContent = '이 달 결과 저장';
 }
 document.addEventListener('change', e => {
   const el = e.target.closest('input[data-gift]'); if (!el) return;
@@ -464,7 +424,6 @@ async function snapAll(hostId, title, btn) {
   } catch (err) { toast(err.message || '이미지 저장 실패'); }
   finally { detailSeg = keep; rerenderSummary(host); btn.disabled = false; btn.textContent = old; }
 }
-$('btnSnapAllCalc').onclick = () => { const r = state.result; if (r) snapAll('calcSummary', monthLabel(r.period), $('btnSnapAllCalc')); };
 document.addEventListener('keydown', e => {
   if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('div.kpi-btn[data-seg]')) { e.preventDefault(); e.target.click(); }
 });
@@ -475,7 +434,7 @@ function renderUpper(rows) {
     <tr><th>상부</th><th>상부점</th><th>하부</th><th class="n">상부 건수</th><th class="n">상부 B</th><th class="n">전체 건수</th><th class="n">전체 A</th><th class="n">자점운영비</th><th class="n">직접지급사은품</th><th class="n">매출</th></tr>${tr}</table></div></div>`;
 }
 
-// ---------- 월별 내역 ----------
+// ---------- 달력 · 저장된 결과 ----------
 async function loadRuns() {
   const { data, error } = await sb.from('dist_pnl_runs')
     .select('id, period, status, seg_status, note, files, summary, rules, created_by, created_at, confirmed_by, confirmed_at')
@@ -491,73 +450,112 @@ function repRun(period, seg) {
   return list.find(r => r.status === '확정') || list.find(r => segsOf(r).some(k => segSt(r, k) === '확정')) || list[0];
 }
 const revOf = (run, k) => { const t = run.summary.segments[k]; const jf = DIST_VIEWS.includes(k) ? 0 : (t.JF || 0); return t.B - t.A - jf - (t.GD ?? ((t.D_B || 0) + (t.D_C || 0) + (t.D_D || 0))); }; // B − A − 자점운영비(유통사업부는 별도라 미차감) − 직접지급사은품
-const man = v => { const n = Math.round((v || 0) / 1e4); return `${n.toLocaleString('ko-KR')}<small>만</small>`; };
+const monthSt = run => !run ? null : isLegacyRun(run) ? '이전' : segSt(run, '유통사업부');
 function renderMonths() {
   const y = state.year;
-  $('yLabel').textContent = `${y}`;
-  const now = new Date(), nowKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const cells = []; let nAll = 0, nPart = 0, nNone = 0;
+  $('yLabel').textContent = `${y}년`;
+  const nowKey = (() => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
+  const cells = [];
   for (let m = 1; m <= 12; m++) {
     const p = `${y}-${String(m).padStart(2, '0')}`;
-    const r = repRun(p);
-    const old = isLegacyRun(r), KS = segsOf(r);
-    const sts = r ? KS.map(k => { const rr = repRun(p, k); return segSt(rr, k); }) : [];
-    const nConf = old ? 0 : sts.filter(x => x === '확정').length;
-    if (r) nConf === KS.length ? nAll++ : nConf ? nPart++ : nNone++;
-    const cls = ['mcell', r ? '' : 'empty', state.selPeriod === p ? 'sel' : '', p === nowKey ? 'now' : ''].filter(Boolean).join(' ');
-    const tip = r ? (old ? '이전 기준으로 저장됨 — 다시 계산 필요' : KS.map((k, i) => `${k} ${Math.round(valOf(repRun(p, k), k)).toLocaleString('ko-KR')}원 (${sts[i]})`).join('\n')) : '기록 없음';
-    const rev = r ? (old ? totalOf(r) : valOf(repRun(p, '유통사업부'), '유통사업부')) : 0;
-    const label = !r ? (p === nowKey ? '이번 달' : '기록 없음') : old ? '이전 기준' : nConf === KS.length ? '전체 확정' : nConf ? `확정 ${nConf}/${KS.length}` : '가정산';
-    cells.push(`<button class="${cls}" data-p="${p}" title="${esc(`${m}월\n${tip}`)}">
-      ${r && !old ? `<span class="mdots">${KS.map((k, i) => `<i class="${sts[i]}" title="${k} ${sts[i]}"></i>`).join('')}</span>` : ''}
-      <span class="mnum">${m}<small>월</small></span>
-      <span class="mcap">${label}</span>
-      ${r ? `<span class="mval${rev < 0 ? ' neg' : ''}">${man(rev)}</span><span class="mcap">${old ? '이전 기준 합계' : '유통사업부 매출'}</span>` : ''}
-    </button>`);
+    const r = repRun(p), st = monthSt(r);
+    const calc = state.result && state.result.period === p && !state.resultSaved;
+    const future = p > nowKey;
+    const dot = calc ? 'calc' : st === '확정' ? '확정' : st ? '가정산' : '';
+    const tip = calc ? '계산 중 (저장 안 함)' : !r ? (future ? '' : '저장된 결과 없음') : st === '이전' ? '이전 기준으로 저장됨' : `${st} · ${Math.round(valOf(r, '유통사업부')).toLocaleString('ko-KR')}원`;
+    cells.push(`<button type="button" class="cm-m${p === state.period ? ' on' : ''}${p === nowKey ? ' now' : ''}" data-p="${p}" ${future ? 'disabled' : ''} title="${esc(`${m}월${tip ? ' · ' + tip : ''}`)}">${m}월${dot ? `<i class="${dot}"></i>` : ''}</button>`);
   }
   $('calGrid').innerHTML = cells.join('');
-  $('yStat').innerHTML = `<span><i style="background:var(--ok)"></i>전체 확정 ${nAll}개월</span><span><i style="background:linear-gradient(90deg,var(--ok) 50%,#f59e0b 50%)"></i>일부 확정 ${nPart}개월</span><span><i style="background:#f59e0b"></i>가정산 ${nNone}개월</span>`;
-  $('calGrid').querySelectorAll('.mcell').forEach(b => b.onclick = () => { state.selPeriod = b.dataset.p; state.selRun = null; state.scrollDetail = true; renderMonths(); });
-  if (state.selPeriod && state.selPeriod.startsWith(String(y))) renderDetail(); else $('monthDetail').innerHTML = '';
+  $('calGrid').querySelectorAll('.cm-m').forEach(b => b.onclick = () => { state.selRun = null; openMonth(b.dataset.p); });
 }
 $('yPrev').onclick = () => { state.year--; renderMonths(); };
 $('yNext').onclick = () => { state.year++; renderMonths(); };
-async function renderDetail() {
-  const p = state.selPeriod; if (!p) return;
+
+/** 달 고르기: 방금 계산한 달이면 그 결과, 저장된 결과가 있으면 그것, 없으면 파일 올리기 */
+async function openMonth(p) {
+  state.period = p; state.year = +p.slice(0, 4); state.showFiles = false;
+  if (state.result && state.result.period === p && !state.resultSaved) { state.mode = 'calc'; refresh(); return; }
   const list = state.runs.filter(r => ym(r.period) === p);
-  if (!list.length) { $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)}</h2><p>저장된 회차가 없어요. 계산하기에서 계산한 뒤 저장하면 여기에 나와요.</p></div></div></div>`; return; }
+  if (!list.length) { state.mode = 'upload'; state.view = null; refresh(); return; }
   const run = list.find(r => r.id === state.selRun) || repRun(p);
-  state.selRun = run.id;
-  const stCell = r => { if (isLegacyRun(r)) return '<span class="pill">이전 기준</span>'; const KS = segsOf(r), n = KS.filter(k => segSt(r, k) === '확정').length; return `<span class="pill ${n === KS.length ? '확정' : '가정산'}">${n === KS.length ? '전체 확정' : n ? `확정 ${n}/${KS.length}` : '가정산'}</span>`; };
-  const segCells = r => isLegacyRun(r) ? `<td class="n" colspan="${STATUS_KEYS.length}">${won(totalOf(r))} <span class="muted small">(이전 기준 · 유통이관+SKB+SKY+매직)</span></td>`
-    : STATUS_KEYS.map(k => `<td class="n">${won(valOf(r, k))} <span class="sdot ${segSt(r, k)}" title="${segSt(r, k)}"></span></td>`).join('');
-  const runRows = list.map(r => `<tr class="click ${r.id === run.id ? 'sel' : ''}" data-id="${r.id}"><td>${stCell(r)}</td>
-    <td class="muted small">${new Date(r.created_at).toLocaleString('ko-KR')}</td><td class="small">${esc(r.created_by || '')}</td>
-    ${segCells(r)}<td class="small">${esc(r.note || '')}</td></tr>`).join('');
-  $('monthDetail').innerHTML = `<div class="panel"><div class="panel-head"><div><h2>${monthLabel(p)} 회차</h2><p>회차를 누르면 그 회차 숫자로 바뀌어요 · 구분별 가정산/확정은 아래 타일에서 바꿔요</p></div>
-      <div class="row gap wrap">
-        <button id="btnExportRun">엑셀 다운로드</button><button id="btnSnapAllRun">이미지 일괄저장</button><button id="btnDelRun" class="danger">회차 삭제</button></div></div>
-      <div class="tbl-wrap"><table class="grid"><tr><th>상태</th><th>저장 시각</th><th>저장자</th>${STATUS_KEYS.map(k => `<th class="n">${k}</th>`).join('')}<th>메모</th></tr>${runRows}</table></div>
-      <p class="muted small" style="margin:0">사용 파일: ${(run.files || []).map(f => `${esc(f.name)} (${f.side}, ${Number(f.rows).toLocaleString()}행)`).join(' · ')}${run.confirmed_at ? ` · 확정: ${esc(run.confirmed_by)} ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</p>
-    </div><div id="runEval" class="stack-lg"></div><div id="runBody" class="stack-lg"><div class="panel muted">불러오는 중…</div></div>`;
-  $('monthDetail').querySelectorAll('tr.click').forEach(tr => tr.onclick = () => { state.selRun = tr.dataset.id; renderDetail(); });
-  if (state.scrollDetail) { state.scrollDetail = false; $('monthDetail').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-  $('btnDelRun').onclick = async () => {
-    if (!await ask(`${monthLabel(p)} 회차(${new Date(run.created_at).toLocaleString('ko-KR')} 저장)를 삭제할까요? 되돌릴 수 없습니다.`)) return;
+  state.selRun = run.id; state.mode = 'saved'; state.view = { loading: true, run, title: monthLabel(p) }; refresh();
+  const { data: lines, error } = await sb.from('dist_pnl_lines').select('*').eq('run_id', run.id);
+  if (state.selRun !== run.id || state.mode !== 'saved') return; // 그 사이 다른 달을 눌렀으면 무시
+  if (error) { state.view = { error: error.message, run, title: monthLabel(p) }; refresh(); return; }
+  const summary = summarize(lines);
+  state.view = { run, lines, summary, title: monthLabel(p), segStatus: Object.fromEntries(segsOf(run).map(k => [k, segSt(run, k)])), eval: run.summary && run.summary.eval };
+  refresh();
+}
+
+/** 화면 전체 다시 그리기 (왼쪽 정보 + 오른쪽 결과) */
+function refresh() {
+  renderMonths(); renderRail();
+  const m = state.mode, r = state.result;
+  const showUpload = m === 'upload' || state.showFiles;
+  $('uploadCard').hidden = !showUpload;
+  $('uploadTitle').textContent = m === 'upload' ? `${monthLabel(state.period)} · 엑셀로 계산하기` : '계산에 쓴 파일';
+  $('uploadSub').textContent = m === 'upload' ? '어드민 가져오기 버튼을 쓰면 자동으로 계산돼요. 엑셀을 직접 받았다면 여기에 올리세요.' : '파일을 빼거나 더 올린 뒤 다시 계산할 수 있어요.';
+  if (m === 'calc' && r) {
+    state.view = { summary: r.summary, title: monthLabel(r.period), segStatus: state.segStatus };
+    $('calcChecks').innerHTML = r.warn.length ? `<div class="warns">${r.warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')}</div>` : '';
+    renderEvalCalc(); rerenderSummary();
+  } else if (m === 'saved' && state.view) {
+    const v = state.view;
+    $('calcChecks').innerHTML = v.error ? `<div class="notice warn">⚠ ${esc(v.error)}</div>` : '';
+    $('calcEval').innerHTML = v.loading ? '<div class="panel muted">불러오는 중…</div>' : v.eval ? renderEval(v.eval, v.title, false)
+      : (v.summary && !v.summary.legacy ? '<div class="notice warn">⚠ 평가손익 입력값이 생기기 전에 저장한 결과예요. 이 달을 다시 계산해서 저장하면 나와요.</div>' : '');
+    if (v.summary) rerenderSummary(); else $('calcSummary').innerHTML = '';
+  } else { $('calcChecks').innerHTML = ''; $('calcEval').innerHTML = ''; $('calcSummary').innerHTML = ''; }
+}
+
+/** 왼쪽 버튼 · 정보 카드 */
+function renderRail() {
+  const m = state.mode, r = state.result;
+  $('btnToggleFiles').hidden = m === 'upload';
+  $('btnToggleFiles').textContent = state.showFiles ? '파일 목록 접기' : '파일 목록 보기';
+  $('btnToggleFiles').disabled = m === 'saved';
+  $('btnSave').hidden = m !== 'calc';
+  $('btnSave').disabled = state.resultSaved;
+  $('btnNew').hidden = m === 'upload' && !state.files.length;
+  if (m === 'saved') $('btnToggleFiles').hidden = true;
+  let html = '';
+  if (m === 'upload') {
+    html = `<h3>${monthLabel(state.period)}</h3><p class="muted small">저장된 결과가 없어요.<br>어드민에서 <b>유통손익 가져오기</b>를 누르거나 오른쪽에 엑셀을 올려 계산하세요.</p>`;
+  } else if (m === 'calc' && r) {
+    const c = r.checks, allOk = c.files.every(f => f.totalOk);
+    html = `<h3>${monthLabel(r.period)}</h3><div class="ri-sub">계산에 쓴 파일 ${state.files.length}개</div>
+      ${r.pulledAt ? `<div class="ri-line">어드민에서 가져옴<br><span class="muted">${new Date(r.pulledAt).toLocaleString('ko-KR')}</span></div>` : ''}
+      <div class="ri-checks">${r.warn.length ? `<span class="neg">⚠ 확인할 것 ${r.warn.length}개</span>` : '<span class="okline">✓ 점검 통과</span>'}<span>${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치</b>'}</span><span>계산에 쓴 행 ${c.usedRows.toLocaleString()}건</span></div>
+      <div class="ri-state ${state.resultSaved ? 'ok' : 'warn'}">${state.resultSaved ? '✓ 저장됨' : '아직 저장 안 함 — 💾 버튼으로 저장'}</div>`;
+  } else if (m === 'saved' && state.view) {
+    const v = state.view, run = v.run, list = state.runs.filter(x => ym(x.period) === state.period);
+    const st = monthSt(run), legacy = st === '이전';
+    html = `<h3>${monthLabel(state.period)}</h3><div class="ri-sub">저장된 결과${list.length > 1 ? ` · ${list.length}회 저장` : ''}</div>
+      <div class="ri-big"><span>${won(legacy ? totalOf(run) : valOf(run, '유통사업부'))}<small>원</small></span><span class="muted small">${legacy ? '이전 기준 합계' : '유통사업부 매출'}</span></div>
+      ${legacy ? '<div class="ri-state warn">이전 기준으로 저장된 결과예요 — 다시 계산해서 저장하세요</div>'
+        : `<div class="stt big" role="group" aria-label="정산 상태">${ST.map(x => `<button type="button" data-runst="${x}" class="${st === x ? 'on ' + x : ''}" aria-pressed="${st === x}">${x}</button>`).join('')}</div>`}
+      <div class="ri-line muted">${new Date(run.created_at).toLocaleString('ko-KR')} 저장<br>${esc(run.created_by || '')}${run.confirmed_at ? `<br>확정 ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</div>
+      ${list.length > 1 ? `<div class="ri-runs"><div class="small muted">저장 기록</div>${list.map(x => `<button type="button" class="ri-run${x.id === run.id ? ' on' : ''}" data-run="${x.id}"><span>${new Date(x.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><i class="${monthSt(x) === '확정' ? '확정' : '가정산'}"></i></button>`).join('')}</div>` : ''}
+      <button type="button" class="link danger small" id="btnDelRun">이 저장 기록 삭제</button>`;
+  }
+  $('railInfo').innerHTML = html;
+  const del = $('btnDelRun');
+  if (del) del.onclick = async () => {
+    const run = state.view.run;
+    if (!await ask(`${monthLabel(state.period)} ${new Date(run.created_at).toLocaleString('ko-KR')}에 저장한 결과를 삭제할까요? 되돌릴 수 없습니다.`)) return;
     const { error } = await sb.from('dist_pnl_runs').delete().eq('id', run.id);
     if (error) { toast('삭제 실패: ' + error.message); return; }
-    toast('삭제했습니다'); state.selRun = null; await loadRuns();
+    toast('삭제했습니다'); state.selRun = null; await loadRuns(); openMonth(state.period);
   };
-  const { data: lines, error } = await sb.from('dist_pnl_lines').select('*').eq('run_id', run.id);
-  if (error) { $('runBody').innerHTML = `<div class="panel err">${esc(error.message)}</div>`; return; }
-  const summary = summarize(lines);
-  const segStatus = Object.fromEntries(segsOf(run).map(k => [k, segSt(run, k)]));
-  state.detail = { summary, lines, title: monthLabel(p), segStatus, runId: run.id, period: p };
-  $('runBody').innerHTML = renderSummary(summary, state.detail.title, segStatus);
-  const savedEval = run.summary && run.summary.eval;
-  $('runEval').innerHTML = savedEval ? renderEval(savedEval, monthLabel(p), false) : '';
-  $('btnExportRun').onclick = () => exportXlsx(p, summary, lines, segStatus, savedEval);
-  $('btnSnapAllRun').onclick = () => snapAll('runBody', monthLabel(p), $('btnSnapAllRun'));
+  $('railInfo').querySelectorAll('[data-run]').forEach(b => b.onclick = () => { state.selRun = b.dataset.run; openMonth(state.period); });
+  $('railInfo').querySelectorAll('[data-runst]').forEach(b => b.onclick = async () => {
+    const run = state.view.run, to = b.dataset.runst; if (monthSt(run) === to) return;
+    const others = state.runs.filter(x => ym(x.period) === state.period && x.id !== run.id && segSt(x, '유통사업부') === '확정');
+    if (to === '확정' && others.length && !await ask(`${monthLabel(state.period)}에 이미 확정된 저장 기록이 있어요. 이 기록을 확정하면 그 기록은 가정산으로 바뀌어요. 계속할까요?`)) return;
+    const { error } = await sb.rpc('dist_pnl_set_seg_status', { p_run: run.id, p_seg: '유통사업부', p_status: to });
+    if (error) { toast('변경 실패: ' + error.message); return; }
+    toast(`${monthLabel(state.period)} → ${to}`); state.selRun = run.id; await loadRuns(); openMonth(state.period);
+  });
 }
 
 // ---------- 엑셀 내보내기 ----------

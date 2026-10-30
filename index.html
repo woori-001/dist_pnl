@@ -19,10 +19,19 @@
 
     <div class="divider"></div>
 
-    <nav class="nav" id="nav" hidden>
-      <button class="on" data-tab="calc"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 10h2M14 10h2M8 14h2M14 14h2M8 18h2M14 18h2"/></svg></span><span><b>계산하기</b><small>어드민·엑셀로 월 계산</small></span></button>
-      <button data-tab="history"><span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></span><span><b>월별 내역</b><small>가정산·확정 기록</small></span></button>
-    </nav>
+    <div class="rail" id="rail" hidden>
+      <div class="panel cal-mini">
+        <div class="cm-head"><button id="yPrev" class="cm-nav" aria-label="이전 해">‹</button><b id="yLabel">2026</b><button id="yNext" class="cm-nav" aria-label="다음 해">›</button></div>
+        <div class="cm-grid" id="calGrid"></div>
+        <div class="cm-legend"><span><i class="확정"></i>확정</span><span><i class="가정산"></i>가정산</span><span><i class="calc"></i>계산 중</span></div>
+      </div>
+      <div class="rail-actions">
+        <button id="btnToggleFiles" class="small-btn grow">파일 목록 보기</button>
+        <button id="btnNew" class="icon-btn" title="새로 계산 (파일 다시 올리기)" aria-label="새로 계산"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+        <button id="btnSave" class="icon-btn primary" title="이 달 결과 저장" aria-label="이 달 결과 저장"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg></button>
+      </div>
+      <div class="panel rail-info" id="railInfo"></div>
+    </div>
 
     <div class="divider"></div>
 
@@ -78,22 +87,12 @@
       <div class="panel-head"><div><h2>사용 권한이 없습니다</h2><p>로그인은 되었지만 이 계정은 계산기 사용 명단(<code>dist_pnl_members</code>)에 없습니다. 관리자에게 이메일 등록을 요청하세요.</p></div></div>
     </section>
 
-    <!-- 앱 -->
-    <section id="viewApp" class="stack-lg" hidden>
-      <!-- 계산하기 -->
-      <div class="pane stack-lg" id="pane-calc">
+    <!-- 앱: 왼쪽(달력·버튼·정보) + 오른쪽(결과) -->
+    <section id="viewApp" class="workspace" hidden>
+
+      <div class="stage stack-lg">
         <div class="panel" id="uploadCard">
-          <div class="panel-head">
-            <div><h2 id="uploadTitle">엑셀로 계산하기</h2><p id="uploadSub">어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.</p></div>
-            <div class="row gap wrap">
-              <button id="btnToggleFiles" class="small-btn" hidden>파일 목록 보기</button>
-              <button id="btnNew" class="small-btn" hidden>새로 계산</button>
-              <button id="btnExportCalc" class="small-btn" hidden>엑셀 다운로드</button>
-              <button id="btnSnapAllCalc" class="small-btn" hidden title="4개 구분 결과표를 이미지로 만들어 ZIP 하나로 저장해요">이미지 일괄저장</button>
-              <button id="btnSave" class="small-btn primary" hidden title="이 달 계산 결과를 타일에서 고른 구분별 가정산/확정 상태로 저장해요">이 달 결과 저장</button>
-              <label class="inline">대상월 <input type="month" id="period"></label>
-            </div>
-          </div>
+          <div class="panel-head"><div><h2 id="uploadTitle">엑셀로 계산하기</h2><p id="uploadSub">어드민 가져오기 버튼을 쓰면 이 단계는 자동이에요. 엑셀을 직접 받았다면 여기에 올리세요.</p></div></div>
           <div id="uploadBody" class="stack-md">
             <div id="drop" class="drop" tabindex="0">
               <div class="drop-ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/></svg></div>
@@ -108,28 +107,10 @@
             </div>
           </div>
         </div>
-
-        <div id="calcResult" class="stack-lg" hidden>
-          <div id="calcChecks"></div>
-          <div id="calcEval" class="stack-lg"></div>
-          <div id="calcSummary" class="stack-lg"></div>
-          <div id="calcUpper"></div>
-        </div>
+        <div id="calcChecks"></div>
+        <div id="calcEval" class="stack-lg"></div>
+        <div id="calcSummary" class="stack-lg"></div>
       </div>
-
-      <!-- 월별 내역 -->
-      <div class="pane stack-lg" id="pane-history" hidden>
-        <div class="panel">
-          <div class="yearbar">
-            <div class="yearbig"><button id="yPrev" aria-label="이전 해">‹</button><b id="yLabel">2026</b><button id="yNext" aria-label="다음 해">›</button></div>
-            <div class="ystat" id="yStat"></div>
-          </div>
-          <div class="cal" id="calGrid"></div>
-          <p class="muted small" style="margin:0">달을 누르면 아래에 그 달 내역이 열려요. 칸의 숫자는 유통사업부 매출(만원), 오른쪽 위 점 4개는 구분별 상태예요(유통사업부·SKB·SKY·매직 순, 초록 = 확정, 주황 = 가정산). 구분마다 확정 회차가 있으면 확정, 없으면 최근 가정산 기준이고, 마우스를 올리면 4개 구분이 모두 보여요. '이전 기준'은 10/27 전 기준으로 저장된 달이라 다시 계산해서 저장하면 돼요.</p>
-        </div>
-        <div id="monthDetail" class="stack-lg"></div>
-      </div>
-
     </section>
   </main>
 </div>
