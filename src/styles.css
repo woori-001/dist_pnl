@@ -576,3 +576,6 @@ details.panel.ev-more, .ev-panel { grid-template-columns: minmax(0, 1fr); }
 .side .rail-info .stt.big button.on.가정산 { color: #d97706; }
 .side .rail-info .ri-state.warn { background: rgba(255,186,120,.2); color: #ffe7d1; border: 1px solid rgba(255,186,120,.3); }
 .side .rail-info .ri-state.ok { border: 1px solid rgba(127,240,191,.3); }
+.cm-m i.saved, .cm-legend i.saved { background: #7ff0bf; }
+.side .cm-m.on i.saved { background: var(--ok); }
+.ri-run small { font-size: 10.5px; opacity: .75; }

@@ -47,7 +47,6 @@ function show(view) {
 }
 const PAGE = {
   calc: ['유통사업부 코드매출·외부유통매출', ''],
-  history: ['월별 내역', '달력에서 달을 누르면 그 달의 가정산·확정 내역이 열려요'],
 };
 function setTitle(t, sub) { $('pageTitle').textContent = t; $('pageSub').textContent = sub; $('pageSub').hidden = !sub; }
 
@@ -207,9 +206,6 @@ $('btnSave').onclick = async () => {
   const r = state.result; if (!r) return;
   const st = { ...state.segStatus };
   const periodDate = r.period + '-01';
-  const existing = state.runs.filter(x => ym(x.period) === r.period && !isLegacyRun(x));
-  const clash = STATUS_KEYS.filter(k => st[k] === '확정' && existing.some(x => segSt(x, k) === '확정'));
-  if (clash.length && !await ask(`${monthLabel(r.period)} ${clash.join(', ')}은(는) 이미 확정된 회차가 있어요. 이번 계산을 확정으로 저장하면 이전 확정은 가정산으로 바뀌어요. 계속할까요?`)) return;
   $('btnSave').disabled = true;
   const files = state.files.map(f => ({ name: f.fileName, side: f.side, rows: f.rows.length, total: f.fileTotal }));
   const rules = { version: RULES.version, checks: { usedRows: r.checks.usedRows, outOfPeriod: r.checks.outOfPeriod, otherDept: r.checks.otherDept, warnings: r.checks.warnings } };
@@ -218,7 +214,7 @@ $('btnSave').onclick = async () => {
   $('btnSave').disabled = false;
   if (error) { toast('저장 실패: ' + error.message); return; }
   state.resultSaved = true;
-  toast(`${monthLabel(r.period)} 가정산으로 저장했어요 — 달력에서 이 달을 누르면 다시 볼 수 있어요`);
+  toast(`${monthLabel(r.period)} 저장했어요 — 달력에서 이 달을 누르면 다시 볼 수 있어요`);
   await loadRuns(); state.selRun = null; openMonth(r.period);
 };
 
@@ -271,7 +267,6 @@ function renderSummary(summary, title, segStatus = blankSt(), opts = {}) {
       </div>`;
   }
   const t = s[detailSeg];
-  const stKey = legacy ? null : statusKeyOf(detailSeg);
   // 상부·전체를 같은 항목으로 나란히 (차감 항목은 −로 표시)
   const rows = [
     ['수수료', '일반', t.U_A, t.D_A0], ['', '관리', t.U_A1, t.D_A1], ['', '정산관련', t.U_A2, t.D_A2],
@@ -291,7 +286,7 @@ function renderSummary(summary, title, segStatus = blankSt(), opts = {}) {
   const name = DIST_VIEWS.includes(detailSeg) ? `유통사업부 ${detailSeg}` : detailSeg;
   const head = legacy ? `<div class="notice warn">이전 기준(유통이관·SKB·SKY·매직)으로 저장된 회차예요. 유통사업부 4분류로 보려면 이 달을 다시 계산해서 저장하세요.</div>` : '';
   return `${head}<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${left}</div>
-    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${name}${stKey ? ` <span class="pill ${segStatus[stKey]}">${segStatus[stKey]}</span>` : ''}</h2></div></div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · ${name}</h2></div></div>
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
 function rerenderSummary() {
@@ -446,8 +441,7 @@ function repRun(period, seg) {
   const all = state.runs.filter(r => ym(r.period) === period);
   const cur = all.filter(r => !isLegacyRun(r));
   const list = cur.length ? cur : all; // 새 기준 회차가 있으면 그것만, 없으면 이전 기준 회차
-  if (seg) return list.find(r => segSt(r, seg) === '확정') || list[0];
-  return list.find(r => r.status === '확정') || list.find(r => segsOf(r).some(k => segSt(r, k) === '확정')) || list[0];
+  return list[0]; // 가장 최근 저장
 }
 const revOf = (run, k) => { const t = run.summary.segments[k]; const jf = DIST_VIEWS.includes(k) ? 0 : (t.JF || 0); return t.B - t.A - jf - (t.GD ?? ((t.D_B || 0) + (t.D_C || 0) + (t.D_D || 0))); }; // B − A − 자점운영비(유통사업부는 별도라 미차감) − 직접지급사은품
 const monthSt = run => !run ? null : isLegacyRun(run) ? '이전' : segSt(run, '유통사업부');
@@ -461,8 +455,8 @@ function renderMonths() {
     const r = repRun(p), st = monthSt(r);
     const calc = state.result && state.result.period === p && !state.resultSaved;
     const future = p > nowKey;
-    const dot = calc ? 'calc' : st === '확정' ? '확정' : st ? '가정산' : '';
-    const tip = calc ? '계산 중 (저장 안 함)' : !r ? (future ? '' : '저장된 결과 없음') : st === '이전' ? '이전 기준으로 저장됨' : `${st} · ${Math.round(valOf(r, '유통사업부')).toLocaleString('ko-KR')}원`;
+    const dot = calc ? 'calc' : r ? 'saved' : '';
+    const tip = calc ? '계산 중 (저장 안 함)' : !r ? (future ? '' : '저장된 결과 없음') : st === '이전' ? '이전 기준으로 저장됨' : `저장됨 · ${Math.round(valOf(r, '유통사업부')).toLocaleString('ko-KR')}원`;
     cells.push(`<button type="button" class="cm-m${p === state.period ? ' on' : ''}${p === nowKey ? ' now' : ''}" data-p="${p}" ${future ? 'disabled' : ''} title="${esc(`${m}월${tip ? ' · ' + tip : ''}`)}">${m}월${dot ? `<i class="${dot}"></i>` : ''}</button>`);
   }
   $('calGrid').innerHTML = cells.join('');
@@ -532,10 +526,9 @@ function renderRail() {
     const st = monthSt(run), legacy = st === '이전';
     html = `<h3>${monthLabel(state.period)}</h3><div class="ri-sub">저장된 결과${list.length > 1 ? ` · ${list.length}회 저장` : ''}</div>
       <div class="ri-big"><span>${won(legacy ? totalOf(run) : valOf(run, '유통사업부'))}<small>원</small></span><span class="muted small">${legacy ? '이전 기준 합계' : '유통사업부 매출'}</span></div>
-      ${legacy ? '<div class="ri-state warn">이전 기준으로 저장된 결과예요 — 다시 계산해서 저장하세요</div>'
-        : `<div class="stt big" role="group" aria-label="정산 상태">${ST.map(x => `<button type="button" data-runst="${x}" class="${st === x ? 'on ' + x : ''}" aria-pressed="${st === x}">${x}</button>`).join('')}</div>`}
-      <div class="ri-line muted">${new Date(run.created_at).toLocaleString('ko-KR')} 저장<br>${esc(run.created_by || '')}${run.confirmed_at ? `<br>확정 ${new Date(run.confirmed_at).toLocaleString('ko-KR')}` : ''}</div>
-      ${list.length > 1 ? `<div class="ri-runs"><div class="small muted">저장 기록</div>${list.map(x => `<button type="button" class="ri-run${x.id === run.id ? ' on' : ''}" data-run="${x.id}"><span>${new Date(x.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span><i class="${monthSt(x) === '확정' ? '확정' : '가정산'}"></i></button>`).join('')}</div>` : ''}
+      ${legacy ? '<div class="ri-state warn">이전 기준으로 저장된 결과예요 — 다시 계산해서 저장하세요</div>' : ''}
+      <div class="ri-line muted">${new Date(run.created_at).toLocaleString('ko-KR')} 저장<br>${esc(run.created_by || '')}</div>
+      ${list.length > 1 ? `<div class="ri-runs"><div class="small muted">저장 기록</div>${list.map(x => `<button type="button" class="ri-run${x.id === run.id ? ' on' : ''}" data-run="${x.id}"><span>${new Date(x.created_at).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>${x.id === list[0].id ? '<small>최근</small>' : ''}</button>`).join('')}</div>` : ''}
       <button type="button" class="link danger small" id="btnDelRun">이 저장 기록 삭제</button>`;
   }
   $('railInfo').innerHTML = html;
@@ -548,14 +541,6 @@ function renderRail() {
     toast('삭제했습니다'); state.selRun = null; await loadRuns(); openMonth(state.period);
   };
   $('railInfo').querySelectorAll('[data-run]').forEach(b => b.onclick = () => { state.selRun = b.dataset.run; openMonth(state.period); });
-  $('railInfo').querySelectorAll('[data-runst]').forEach(b => b.onclick = async () => {
-    const run = state.view.run, to = b.dataset.runst; if (monthSt(run) === to) return;
-    const others = state.runs.filter(x => ym(x.period) === state.period && x.id !== run.id && segSt(x, '유통사업부') === '확정');
-    if (to === '확정' && others.length && !await ask(`${monthLabel(state.period)}에 이미 확정된 저장 기록이 있어요. 이 기록을 확정하면 그 기록은 가정산으로 바뀌어요. 계속할까요?`)) return;
-    const { error } = await sb.rpc('dist_pnl_set_seg_status', { p_run: run.id, p_seg: '유통사업부', p_status: to });
-    if (error) { toast('변경 실패: ' + error.message); return; }
-    toast(`${monthLabel(state.period)} → ${to}`); state.selRun = run.id; await loadRuns(); openMonth(state.period);
-  });
 }
 
 // ---------- 엑셀 내보내기 ----------
