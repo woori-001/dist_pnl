@@ -590,3 +590,4 @@ details.panel.ev-more, .ev-panel { grid-template-columns: minmax(0, 1fr); }
 .sg-t b { font-size: 13px; }
 .sg-t small { font-size: 11px; opacity: .75; }
 .sg-arrow { margin-left: auto; opacity: .8; flex: none; }
+.side .rail + .side-go { margin-top: -12px; }
