@@ -1,8 +1,8 @@
 // 평가손익(경영지원 '배분 전·배분 후 손익') 유통사업부 입력값 — 코드매출 / 외부유통매출
 //  공통: 코드 = 숫자로 시작하는 상부(0.기타 제외), 외부유통 = 그 외. 협력점이 자점인 건은 제외(사은품·기대관리만 자점 포함)
 //  월 기준은 계산기와 같음: 일반 = 개통일, 추가·환수 = 정산예정일, 옛날 데이터 포함
-import { RULES } from './rules.js';
-import { segmentOf, isJajeom, itemOf, isDroppedNoDue } from './calc.js';
+import { RULES } from './rules.js?v=202611021527';
+import { segmentOf, isJajeom, itemOf, isDroppedNoDue } from './calc.js?v=202611021527';
 
 export const EVAL_ROWS = ['코드매출', '외부유통매출'];
 export const EVAL_COLS = [

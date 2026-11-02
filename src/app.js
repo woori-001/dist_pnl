@@ -1,11 +1,15 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js';
-import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js';
-import { parseWorkbook, compute, summarize, byUpper } from './calc.js';
-import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=202611021527';
+import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js?v=202611021527';
+import { parseWorkbook, compute, summarize, byUpper } from './calc.js?v=202611021527';
+import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js?v=202611021527';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
+// 화면 칸이 없으면(옛 화면이 캐시된 경우 등) 만들어서 계산이 멈추지 않게
+for (const [id, after] of [['calcGifts', 'calcEval'], ['calcChecks', 'calcEval']]) {
+  if (!$(id) && $(after)) { const d = document.createElement('div'); d.id = id; d.className = 'stack-lg'; (id === 'calcChecks' ? $(after).before(d) : $(after).after(d)); }
+}
 const XLSX = window.XLSX;
 
 const prevMonth = (() => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`; })();
@@ -568,8 +572,15 @@ async function openMonth(p) {
   refresh();
 }
 
-/** 화면 전체 다시 그리기 (왼쪽 정보 + 오른쪽 결과) */
+/** 화면 전체 다시 그리기 (왼쪽 정보 + 오른쪽 결과) — 중간에 오류가 나도 무엇이 문제인지 화면에 보이게 */
 function refresh() {
+  try { refreshInner(); }
+  catch (err) {
+    console.error(err);
+    $('calcChecks').innerHTML = `<div class="notice warn">⚠ 화면을 그리다 오류가 났어요: ${esc(err.message || err)} — 새로고침(Ctrl+Shift+R) 후 다시 해 보고, 계속되면 이 문구를 알려 주세요.</div>`;
+  }
+}
+function refreshInner() {
   renderMonths(); renderRail();
   const m = state.mode, r = state.result;
   const showUpload = m === 'upload' || state.showFiles;
