@@ -8,7 +8,7 @@ export const EVAL_ROWS = ['코드매출', '외부유통매출'];
 export const EVAL_COLS = [
   ['issue', '발생수수료', '상부정산 일반·추가 정산금액(관리수수료 제외, 정산관련 포함) + 기대관리'],
   ['expect', '기대관리(참고)', '건수 × 월 단가 × 28개월 · 발생수수료에 포함됨'],
-  ['mgmt', '관리수수료', "상부정산 일반·추가 중 상품명 '_관리'"],
+  ['mgmt', '관리수수료', "상부정산 일반·추가 중 상품명 '_관리' · SKY·SKB·SK매직 상부만"],
   ['refundUp', '환수(차감)', '상부정산 환수 — 우리에게 내려온 것'],
   ['refundDn', '환수(대체)', '전체정산 환수 — 우리가 하부점에 내린 것'],
   ['gift', '사은품', '전체정산 일반 · 현금(차감↔지급 확인)+물류+쿠폰 · 자점 포함'],
@@ -59,6 +59,8 @@ export function computeEval(parsed, period, choices = {}) {
     if (up === '코드' && RULES.evalCodeUppers && !RULES.evalCodeUppers.some(c => r.upper.includes(c))) continue; // 다른 사업부 코드
     const jj = isJajeom(r.partner) && !RULES.evalNotJajeomPrefixes.some(p => r.partner.trim().startsWith(p));
     const t = rows[segName(up)], item = itemOf(r);
+    // 관리수수료는 SKY·SKB·SK매직 상부만 (나머지 코드의 '_관리' 건은 넣지 않음)
+    if (item === '관리수수료' && up === '코드' && !RULES.evalMgmtUppers.some(c => r.upper.includes(c))) continue;
     if (f.side === '상부') {
       if (r.kind === '환수') { if (!jj) t.refundUp += -r.amount; continue; }
       if (!jj) {

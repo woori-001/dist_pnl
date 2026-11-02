@@ -58,6 +58,8 @@ export const RULES = {
   evalNotJajeomPrefixes: ['0.'],
   // 평가손익 코드매출에 넣을 코드 상부 (null = 숫자로 시작하는 모든 코드 — 유통은 전 통신사, 우신·우성 사업부와 겹쳐도 됨)
   evalCodeUppers: null,
+  // 평가손익 관리수수료: 코드 상부 중 이 글자가 들어간 상부만 (SKY·SKB·SK매직 — KT·SKT는 우신·우성 몫, 2026-11-02)
+  evalMgmtUppers: ['SKY-', 'SKB-', 'SK매직'],
   // 기대관리 건수에서 보류(확인 중)로 따로 세는 상품명 글자
   expectHoldKeywords: ['약정갱신', '업셀링', '전환'],
 
