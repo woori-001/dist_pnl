@@ -2,7 +2,7 @@
 //  공통: 코드 = 숫자로 시작하는 상부(0.기타 제외), 외부유통 = 그 외. 협력점이 자점인 건은 제외(사은품·기대관리만 자점 포함)
 //  월 기준은 계산기와 같음: 일반 = 개통일, 추가·환수 = 정산예정일, 옛날 데이터 포함
 import { RULES } from './rules.js';
-import { segmentOf, isJajeom, itemOf } from './calc.js';
+import { segmentOf, isJajeom, itemOf, isDroppedNoDue } from './calc.js';
 
 export const EVAL_ROWS = ['코드매출', '외부유통매출'];
 export const EVAL_COLS = [
@@ -54,6 +54,7 @@ export function computeEval(parsed, period, choices = {}) {
   for (const f of parsed) for (const r of f.rows) {
     const dateKey = RULES.openDateKinds.includes(r.kind) ? r.openDate : r.dueDate;
     if (!dateKey.startsWith(period)) continue;
+    if (isDroppedNoDue(r)) continue; // 미개통·정산예정일 없음 → 제외
     const up = segmentOf(r.upper); if (!up) continue;
     if (up === '코드' && RULES.evalCodeUppers && !RULES.evalCodeUppers.some(c => r.upper.includes(c))) continue; // 다른 사업부 코드
     const jj = isJajeom(r.partner) && !RULES.evalNotJajeomPrefixes.some(p => r.partner.trim().startsWith(p));

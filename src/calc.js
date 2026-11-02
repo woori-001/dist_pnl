@@ -89,6 +89,10 @@ export function jajeomFeeOf(row) {
   const hit = RULES.jajeomFees.filter(f => f.name === cat && f.from <= date).sort((a, b) => b.from.localeCompare(a.from))[0];
   return hit ? hit.amount : 0;
 }
+/** 합산 제외: 일반 건인데 개통완료가 아니고 정산예정일도 없는 건 */
+export function isDroppedNoDue(r) {
+  return RULES.dropNoDueKinds.includes(r.kind) && !r.dueDate && !!r.status && !r.status.includes(RULES.dropKeepStatus);
+}
 export function itemOf(row) {
   if (row.kind === '환수') return '환수';
   if (row.product.includes(RULES.mgmtProductKeyword)) return '관리수수료';
@@ -99,7 +103,7 @@ export function itemOf(row) {
 /** 파싱된 파일들 + 대상월(YYYY-MM) → 집계행 + 점검결과 */
 export function compute(parsed, period) {
   const map = new Map();
-  const checks = { files: [], outOfPeriod: 0, otherDept: 0, formulaMismatch: 0, usedRows: 0, warnings: [] };
+  const checks = { files: [], outOfPeriod: 0, otherDept: 0, formulaMismatch: 0, usedRows: 0, warnings: [], dropped: [] };
   const seen = new Set();
   const kindFiles = {}; // 같은 정산종류가 여러 파일에서 계산되면 중복 가능성 경고
   for (const f of parsed) {
@@ -112,6 +116,7 @@ export function compute(parsed, period) {
       // 일반 = 개통일 기준, 추가·환수 = 정산예정일 기준 (RULES.openDateKinds)
       const dateKey = RULES.openDateKinds.includes(r.kind) ? r.openDate : r.dueDate;
       if (!dateKey.startsWith(period)) { checks.outOfPeriod++; continue; }
+      if (isDroppedNoDue(r)) { checks.dropped.push({ side: f.side, customer: r.customer, partner: r.partner, upper: r.upper, product: r.product, openDate: r.openDate, status: r.status, amount: r.amount, gift: r.d['사은품'] + r.d['물류'] + r.d['쿠폰'] }); continue; }
       const calc = r.base - DEDUCT.reduce((s, k) => s + r.d[k], 0) + r.receipt + r.bundle + r.dongpan;
       if (calc !== r.amount) checks.formulaMismatch++;
       const seg = segmentOf(r.upper);

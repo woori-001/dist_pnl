@@ -213,7 +213,9 @@ $('btnSave').onclick = async () => {
   const periodDate = r.period + '-01';
   $('btnSave').disabled = true;
   const files = state.files.map(f => ({ name: f.fileName, side: f.side, rows: f.rows.length, total: f.fileTotal }));
-  const rules = { version: RULES.version, checks: { usedRows: r.checks.usedRows, outOfPeriod: r.checks.outOfPeriod, otherDept: r.checks.otherDept, warnings: r.checks.warnings } };
+  const dsum = side => r.checks.dropped.filter(x => x.side === side).reduce((a, x) => a + x.amount, 0);
+  const rules = { version: RULES.version, checks: { usedRows: r.checks.usedRows, outOfPeriod: r.checks.outOfPeriod, otherDept: r.checks.otherDept, warnings: r.checks.warnings,
+    dropped: { count: r.checks.dropped.length, upper: dsum('상부'), total: dsum('전체') } } };
   const { error } = await sb.rpc('dist_pnl_save_run2', { p_period: periodDate, p_seg_status: st, p_note: null,
     p_files: files, p_summary: { ...r.summary, eval: r.eval ? evalForSave(r.eval) : null }, p_rules: rules, p_lines: r.lines });
   $('btnSave').disabled = false;
@@ -525,7 +527,7 @@ function refresh() {
   $('uploadSub').textContent = m === 'upload' ? '어드민 가져오기 버튼을 쓰면 자동으로 계산돼요. 엑셀을 직접 받았다면 여기에 올리세요.' : '파일을 빼거나 더 올린 뒤 다시 계산할 수 있어요.';
   if (m === 'calc' && r) {
     state.view = { summary: r.summary, title: monthLabel(r.period), segStatus: state.segStatus, ev: r.eval };
-    $('calcChecks').innerHTML = r.warn.length ? `<div class="warns">${r.warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')}</div>` : '';
+    $('calcChecks').innerHTML = (r.warn.length ? `<div class="warns">${r.warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')}</div>` : '') + renderDropped(r.checks.dropped);
     renderEvalCalc(); rerenderSummary();
   } else if (m === 'saved' && state.view) {
     const v = state.view;
@@ -534,6 +536,17 @@ function refresh() {
       : (v.summary && !v.summary.legacy ? '<div class="notice warn">⚠ 평가손익 입력값이 생기기 전에 저장한 결과예요. 이 달을 다시 계산해서 저장하면 나와요.</div>' : '');
     if (v.summary) rerenderSummary(); else $('calcSummary').innerHTML = '';
   } else { $('calcChecks').innerHTML = ''; $('calcEval').innerHTML = ''; $('calcSummary').innerHTML = ''; }
+}
+
+/** 합산에서 뺀 건 (일반 · 개통완료 아님 · 정산예정일 없음) */
+function renderDropped(list) {
+  if (!list || !list.length) return '';
+  const n = v => Math.round(v || 0).toLocaleString('ko-KR');
+  const sum = (side, k) => list.filter(x => x.side === side).reduce((a, x) => a + x[k], 0);
+  const cnt = side => list.filter(x => x.side === side).length;
+  return `<details class="panel ev-more drop-list"><summary><b>합산에서 뺀 건 ${list.length}행</b><span class="muted small"> · 일반 건 중 개통완료가 아니고 정산예정일이 없는 건 — 상부 ${cnt('상부')}행 ${n(sum('상부', 'amount'))}원 · 전체 ${cnt('전체')}행 ${n(sum('전체', 'amount'))}원 (사은품 차감 ${n(sum('전체', 'gift'))}원)</span></summary>
+    <div class="tbl-wrap"><table class="grid ev-gift"><tr><th>구분</th><th>고객</th><th>협력점</th><th>상부점</th><th>상품</th><th>개통일</th><th>개통상태</th><th class="n">정산금액</th><th class="n">사은품 차감</th></tr>
+    ${list.map(x => `<tr><td>${x.side}</td><td>${esc(x.customer)}</td><td class="small">${esc(x.partner)}</td><td class="small">${esc(x.upper)}</td><td class="small">${esc(x.product)}</td><td class="small">${esc(x.openDate)}</td><td class="small">${esc(x.status)}</td><td class="n">${n(x.amount)}</td><td class="n">${x.gift ? n(x.gift) : '-'}</td></tr>`).join('')}</table></div></details>`;
 }
 
 /** 왼쪽 버튼 · 정보 카드 */
@@ -553,7 +566,7 @@ function renderRail() {
     const c = r.checks, allOk = c.files.every(f => f.totalOk);
     html = `<h3>${monthLabel(r.period)}</h3><div class="ri-sub">계산에 쓴 파일 ${state.files.length}개</div>
       ${r.pulledAt ? `<div class="ri-line">어드민에서 가져옴<br><span class="muted">${new Date(r.pulledAt).toLocaleString('ko-KR')}</span></div>` : ''}
-      <div class="ri-checks">${r.warn.length ? `<span class="neg">⚠ 확인할 것 ${r.warn.length}개</span>` : '<span class="okline">✓ 점검 통과</span>'}<span>${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치</b>'}</span><span>계산에 쓴 행 ${c.usedRows.toLocaleString()}건</span></div>
+      <div class="ri-checks">${r.warn.length ? `<span class="neg">⚠ 확인할 것 ${r.warn.length}개</span>` : '<span class="okline">✓ 점검 통과</span>'}<span>${allOk ? '파일 합계 모두 일치' : '<b class="neg">파일 합계 불일치</b>'}</span><span>계산에 쓴 행 ${c.usedRows.toLocaleString()}건</span>${c.dropped && c.dropped.length ? `<span>미개통·정산예정일 없음 ${c.dropped.length}행 제외</span>` : ''}</div>
       <div class="ri-state ${state.resultSaved ? 'ok' : 'warn'}">${state.resultSaved ? '✓ 저장됨' : '아직 저장 안 함 — 💾 버튼으로 저장'}</div>`;
   } else if (m === 'saved' && state.view) {
     const v = state.view, run = v.run, list = state.runs.filter(x => ym(x.period) === state.period);
