@@ -591,3 +591,15 @@ details.panel.ev-more, .ev-panel { grid-template-columns: minmax(0, 1fr); }
 .sg-t small { font-size: 11px; opacity: .75; }
 .sg-arrow { margin-left: auto; opacity: .8; flex: none; }
 .side .rail + .side-go { margin-top: -12px; }
+
+/* 사은품 확인: 여러 건 선택 */
+.gift-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 10px 12px; background: var(--soft); border-radius: 12px; }
+.gift-bar .gb-btns { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.gift-bar .gb-sep { width: 1px; height: 22px; background: var(--line); }
+.gift-bar .small-btn { height: 32px; }
+.gift-bar .small-btn:disabled { opacity: .45; cursor: default; }
+.gift-bar .small-btn.ghost { background: transparent; }
+.ev-gift th.ck, .ev-gift td.ck { width: 34px; text-align: center; padding-left: 8px; padding-right: 4px; }
+.ev-gift input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--side); cursor: pointer; }
+.ev-gift tr.picked td { background: #eef3ff; }
+.ev-gift tr:first-child th { position: sticky; top: 0; z-index: 1; background: var(--bg); }

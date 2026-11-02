@@ -346,42 +346,93 @@ function renderEval(ev, title, live) {
   const pend = live ? ev.giftPending : ev.gift && ev.gift.pending;
   if (pend) notes.push(`사은품 확인 ${pend}건이 아직 '넣지 않음'이에요 — 아래 목록에서 넣을 금액을 골라 주세요`);
   const exp = (ev.expectRows || []).map(e => `<tr><td>${e.carrier}</td><td>${e.type}</td><td class="n">${e.cnt.toLocaleString()}</td><td class="n">${e.rate == null ? '<span class="muted">확인 중</span>' : n(e.rate)}</td><td class="n">${e.months}</td><td class="n">${e.amount == null ? '<span class="muted">-</span>' : won(e.amount)}</td></tr>`).join('');
-  let gifts = '';
-  if (live && ev.giftList.length) {
-    const sum = (k) => ev.giftList.reduce((s, g) => s + (g[k] || 0), 0);
-    gifts = `<details class="panel ev-more" ${ev.giftPending ? 'open' : ''}><summary><b>사은품 확인 ${ev.giftList.length}건</b><span class="muted small"> · 차감_사은품과 사은품 지급(현금+지급완료일)이 안 맞는 건 · 고른 금액이 사은품에 들어가요</span></summary>
-      <div class="row gap wrap ev-bulk"><span class="small muted">한꺼번에:</span>${PICK.map(([k, l]) => `<button type="button" class="small-btn" data-giftall="${k}">모두 ${l}</button>`).join('')}
-        <span class="small muted">차감 합 ${n(sum('ded'))} · 지급 합 ${n(sum('paid'))}</span></div>
-      <div class="tbl-wrap"><table class="grid ev-gift"><tr><th>구분</th><th>내용</th><th>협력점</th><th>고객</th><th>개통일</th><th>상품</th><th>지급처</th><th>지급완료</th><th class="n">차감</th><th class="n">지급</th><th>넣을 금액</th></tr>
-      ${ev.giftList.map((g, i) => `<tr><td>${g.seg === '코드매출' ? '코드' : '외부'}</td><td class="small">${esc(g.why)}</td><td class="small">${esc(g.partner)}</td><td class="small">${esc(g.customer)}</td><td class="small">${esc(g.openDate)}</td><td class="small">${esc(g.product)}</td><td class="small">${esc(g.payer)}</td><td class="small">${esc(g.done || '-')}</td><td class="n">${n(g.ded)}</td><td class="n">${g.paid == null ? '-' : n(g.paid)}</td>
-        <td><div class="pick" role="radiogroup">${PICK.filter(([k]) => k !== 'paid' || g.paid != null).map(([k, l]) => `<label><input type="radio" name="gp${i}" data-gift="${esc(g.key)}" value="${k}" ${g.pick === k ? 'checked' : ''}>${l}</label>`).join('')}</div></td></tr>`).join('')}</table></div></details>`;
-  } else if (!live && ev.gift && ev.gift.checked) {
-    const pk = ev.gift.picks || {};
-    gifts = `<p class="muted small" style="margin:0">사은품 확인 ${ev.gift.checked}건 — 차감 금액 ${pk.ded || 0} · 지급 금액 ${pk.paid || 0} · 넣지 않음 ${pk.none || 0}건으로 저장됨</p>`;
-  }
   return `<div class="panel ev-panel"><div class="panel-head"><div><h2>${esc(title)} · 평가손익 입력값 <span class="pill">유통사업부</span></h2><p>경영지원 '배분 전·배분 후 손익'의 유통사업부 › 코드매출 / 외부유통매출 칸에 넣을 숫자예요 · 숫자를 누르면 복사돼요</p></div></div>
     ${notes.length ? `<div class="warns">${notes.map(x => `<div class="notice warn">⚠ ${esc(x)}</div>`).join('')}</div>` : ''}
     <div class="tbl-wrap"><table class="grid ev-tbl"><tr><th>구분</th>${head}</tr>${EVAL_ROWS.map(k => row(k, ev.rows[k])).join('')}${row('유통사업부 합계', ev.total, 'total')}</table></div>
     <p class="muted small" style="margin:0">협력점이 자점인 건은 빼고(0.영업정산은 포함), 사은품과 기대관리만 자점을 포함해요 · 발생수수료 = 상부정산 일반·추가(관리수수료 제외, 정산관련 포함) + 기대관리 · 사은품 = 현금+물류+쿠폰(일반 건, 유치자지급 제외)</p>
     <details class="ev-more"><summary><b>기대관리 내역</b><span class="muted small"> · 상부정산 코드 · 일반 · 해지 제외 · 자점 포함 · 건수 × 월 단가 × ${RULES.expectMonths}개월</span></summary>
       <div class="tbl-wrap"><table class="grid"><tr><th>통신사</th><th>유형</th><th class="n">건수</th><th class="n">월 단가</th><th class="n">개월</th><th class="n">기대관리</th></tr>${exp || '<tr><td colspan="6" class="muted">해당 없음</td></tr>'}</table></div></details>
-  </div>${gifts}`;
+  </div>`;
 }
-function renderEvalCalc() {
+/** 사은품 확인 목록 — 고를 때 목록을 다시 그리지 않음 (스크롤 유지) */
+function giftAuto(ev) {
+  const a = ev.paidAuto; if (!a || !a.n) return '';
+  return `<p class="muted small" style="margin:0">${esc(RULES.evalGiftPaidPartners.join(', '))} ${a.n}건은 확인 없이 <b>지급 금액</b>으로 넣었어요 (차감 ${Math.round(a.ded).toLocaleString('ko-KR')} → 지급 ${Math.round(a.paid).toLocaleString('ko-KR')})</p>`;
+}
+function giftStats(ev) {
+  const n = v => Math.round(v || 0).toLocaleString('ko-KR');
+  const c = { ded: 0, paid: 0, none: 0 }; ev.giftList.forEach(g => c[g.pick]++);
+  return `차감 금액 ${c.ded} · 지급 금액 ${c.paid} · 넣지 않음 <b class="${c.none ? 'neg' : ''}">${c.none}</b>건 · 사은품 현금 합계 ${n(ev.total.giftCash)}원`;
+}
+function renderGifts(ev, live) {
+  const n = v => v == null ? '-' : Math.round(v).toLocaleString('ko-KR');
+  if (!live) {
+    const pk = (ev.gift && ev.gift.picks) || {};
+    return (ev.gift && ev.gift.checked ? `<p class="muted small" style="margin:0">사은품 확인 ${ev.gift.checked}건 — 차감 금액 ${pk.ded || 0} · 지급 금액 ${pk.paid || 0} · 넣지 않음 ${pk.none || 0}건으로 저장됨</p>` : '') + giftAuto(ev);
+  }
+  if (!ev.giftList.length) return giftAuto(ev);
+  return `<details class="panel ev-more" id="giftBox" ${ev.giftPending ? 'open' : ''}><summary><b>사은품 확인 ${ev.giftList.length}건</b><span class="muted small"> · 차감_사은품과 사은품 지급(현금+지급완료일)이 안 맞는 건 · 고른 금액이 사은품에 들어가요</span></summary>
+    ${giftAuto(ev)}
+    <div class="gift-bar">
+      <span class="small"><b id="giftSelN">0</b>건 선택</span>
+      <span class="gb-btns">${PICK.map(([k, l]) => `<button type="button" class="small-btn" data-giftsel="${k}" disabled>선택한 건 ${l}</button>`).join('')}</span>
+      <span class="gb-sep"></span>
+      <span class="gb-btns">${PICK.map(([k, l]) => `<button type="button" class="small-btn ghost" data-giftall="${k}">모두 ${l}</button>`).join('')}</span>
+    </div>
+    <div class="small muted" id="giftStats">${giftStats(ev)}</div>
+    <div class="tbl-wrap"><table class="grid ev-gift"><tr><th class="ck"><input type="checkbox" id="giftAllCk" aria-label="전체 선택"></th><th>구분</th><th>고객</th><th>협력점</th><th class="n">차감</th><th class="n">지급</th><th>넣을 금액</th><th>내용</th><th>개통일</th><th>상품</th><th>지급완료</th></tr>
+    ${ev.giftList.map((g, i) => `<tr data-row="${esc(g.key)}"><td class="ck"><input type="checkbox" class="gsel" data-key="${esc(g.key)}" aria-label="선택"></td><td>${g.seg === '코드매출' ? '코드' : '외부'}</td><td class="small">${esc(g.customer)}</td><td class="small">${esc(g.partner)}</td><td class="n">${n(g.ded)}</td><td class="n">${g.paid == null ? '-' : n(g.paid)}</td>
+      <td><div class="pick" role="radiogroup">${PICK.filter(([k]) => k !== 'paid' || g.paid != null).map(([k, l]) => `<label><input type="radio" name="gp${i}" data-gift="${esc(g.key)}" value="${k}" ${g.pick === k ? 'checked' : ''}>${l}</label>`).join('')}</div></td>
+      <td class="small">${esc(g.why)}</td><td class="small">${esc(g.openDate)}</td><td class="small">${esc(g.product)}</td><td class="small">${esc(g.done || '-')}</td></tr>`).join('')}</table></div></details>`;
+}
+function renderEvalCalc(withGifts = true) {
   const r = state.result; if (!r || !r.eval || state.mode !== 'calc') return;
+  const keepOpen = [...$('calcEval').querySelectorAll('details')].map(d => d.open);
   $('calcEval').innerHTML = renderEval(r.eval, monthLabel(r.period), true);
+  [...$('calcEval').querySelectorAll('details')].forEach((d, i) => { if (keepOpen[i] !== undefined) d.open = keepOpen[i]; });
+  if (withGifts) $('calcGifts').innerHTML = renderGifts(r.eval, true);
 }
+/** 사은품 선택이 바뀌면 숫자만 다시 계산 — 목록은 그대로 두고 라디오만 맞춤 */
 function recomputeEval() {
   const r = state.result; if (!r) return;
-  const keepOpen = [...$('calcEval').querySelectorAll('details')].map(d => d.open);
-  r.eval = computeEval(state.files, r.period, state.giftChoices); renderEvalCalc(); if (state.view) { state.view.ev = r.eval; rerenderSummary(); } state.resultSaved = false; renderRail();
-  [...$('calcEval').querySelectorAll('details')].forEach((d, i) => { if (keepOpen[i] !== undefined) d.open = keepOpen[i]; });
+  r.eval = computeEval(state.files, r.period, state.giftChoices);
+  renderEvalCalc(false);
+  if (state.view) { state.view.ev = r.eval; rerenderSummary(); }
+  state.resultSaved = false; renderRail();
+  const pickOf = Object.fromEntries(r.eval.giftList.map(g => [g.key, g.pick]));
+  $('calcGifts').querySelectorAll('input[data-gift]').forEach(x => { x.checked = pickOf[x.dataset.gift] === x.value; });
+  const st = $('giftStats'); if (st) st.innerHTML = giftStats(r.eval);
+}
+function giftSelUpdate() {
+  const sel = [...$('calcGifts').querySelectorAll('.gsel')];
+  const n = sel.filter(x => x.checked).length;
+  if ($('giftSelN')) $('giftSelN').textContent = n;
+  $('calcGifts').querySelectorAll('[data-giftsel]').forEach(b => b.disabled = !n);
+  const all = $('giftAllCk'); if (all) { all.checked = n && n === sel.length; all.indeterminate = n > 0 && n < sel.length; }
+  sel.forEach(x => x.closest('tr').classList.toggle('picked', x.checked));
 }
 document.addEventListener('change', e => {
+  if (e.target.id === 'giftAllCk') { $('calcGifts').querySelectorAll('.gsel').forEach(x => x.checked = e.target.checked); giftSelUpdate(); return; }
+  if (e.target.classList && e.target.classList.contains('gsel')) { giftSelUpdate(); return; }
   const el = e.target.closest('input[data-gift]'); if (!el) return;
   state.giftChoices[el.dataset.gift] = el.value; recomputeEval();
 });
+let lastCk = null; // Shift+클릭으로 범위 선택
+document.addEventListener('click', e => {
+  const ck = e.target.closest && e.target.closest('.gsel'); if (!ck) return;
+  const all = [...$('calcGifts').querySelectorAll('.gsel')];
+  if (e.shiftKey && lastCk && lastCk !== ck) { const [a, b] = [all.indexOf(lastCk), all.indexOf(ck)].sort((x, y) => x - y); all.slice(a, b + 1).forEach(x => x.checked = ck.checked); giftSelUpdate(); }
+  lastCk = ck;
+});
 document.addEventListener('click', async e => {
+  const selBtn = e.target.closest('[data-giftsel]');
+  if (selBtn && state.result && state.result.eval) {
+    const to = selBtn.dataset.giftsel, keys = [...$('calcGifts').querySelectorAll('.gsel:checked')].map(x => x.dataset.key);
+    const byKey = Object.fromEntries(state.result.eval.giftList.map(g => [g.key, g]));
+    keys.forEach(k => { state.giftChoices[k] = (to === 'paid' && byKey[k] && byKey[k].paid == null) ? 'none' : to; });
+    recomputeEval(); toast(`${keys.length}건 → ${PICK.find(p => p[0] === to)[1]}`);
+    $('calcGifts').querySelectorAll('.gsel').forEach(x => x.checked = false); giftSelUpdate(); return;
+  }
   const all = e.target.closest('[data-giftall]');
   if (all && state.result && state.result.eval) {
     for (const g of state.result.eval.giftList) state.giftChoices[g.key] = (all.dataset.giftall === 'paid' && g.paid == null) ? 'none' : all.dataset.giftall;
@@ -532,10 +583,11 @@ function refresh() {
   } else if (m === 'saved' && state.view) {
     const v = state.view;
     $('calcChecks').innerHTML = v.error ? `<div class="notice warn">⚠ ${esc(v.error)}</div>` : '';
+    $('calcGifts').innerHTML = v.eval && !v.loading ? renderGifts(v.eval, false) : '';
     $('calcEval').innerHTML = v.loading ? '<div class="panel muted">불러오는 중…</div>' : v.eval ? renderEval(v.eval, v.title, false)
       : (v.summary && !v.summary.legacy ? '<div class="notice warn">⚠ 평가손익 입력값이 생기기 전에 저장한 결과예요. 이 달을 다시 계산해서 저장하면 나와요.</div>' : '');
     if (v.summary) rerenderSummary(); else $('calcSummary').innerHTML = '';
-  } else { $('calcChecks').innerHTML = ''; $('calcEval').innerHTML = ''; $('calcSummary').innerHTML = ''; }
+  } else { $('calcChecks').innerHTML = ''; $('calcEval').innerHTML = ''; $('calcGifts').innerHTML = ''; $('calcSummary').innerHTML = ''; }
 }
 
 /** 합산에서 뺀 건 (일반 · 개통완료 아님 · 정산예정일 없음) */

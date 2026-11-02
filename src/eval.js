@@ -50,6 +50,7 @@ export function computeEval(parsed, period, choices = {}) {
   const rows = { 코드매출: blank(), 외부유통매출: blank() };
   const expect = {};      // carrier|type → { carrier, type, cnt, seg }
   let expectHold = 0, partnerPaidDone = 0;
+  const paidAuto = { n: 0, ded: 0, paid: 0 }; // 지급 금액 기준으로 자동 반영한 불일치 건
   const giftList = [];    // 확인이 필요한 사은품 건 (화면 전용)
   for (const f of parsed) for (const r of f.rows) {
     const dateKey = RULES.openDateKinds.includes(r.kind) ? r.openDate : r.dueDate;
@@ -86,7 +87,11 @@ export function computeEval(parsed, period, choices = {}) {
         t.giftGoods += r.d['물류']; t.giftCoupon += r.d['쿠폰'];
         const g = giftCheck(r);
         if (g.why === '유치자지급' && r.giftDone && r.giftCash) partnerPaidDone++;
-        if (g.why && g.why !== '유치자지급') {
+        const paidRule = RULES.evalGiftPaidPartners.some(p => r.partner.trim().startsWith(p));
+        if (paidRule && g.why !== '유치자지급') { // 지급 금액 기준 협력점: 확인 목록 없이 지급 금액으로
+          const paidAmt = r.giftDone && r.giftCash > 0 ? r.giftCash : 0;
+          t.giftCash += paidAmt; if (g.why) paidAuto.n++, paidAuto.ded += g.ded || 0, paidAuto.paid += paidAmt;
+        } else if (g.why && g.why !== '유치자지급') {
           const key = [f.side, r.no, r.customer, r.openDate, r.product].join('|');
           const pick = choices[key] || 'none';
           t.giftCash += pick === 'ded' ? g.ded : pick === 'paid' ? g.paid : 0;
@@ -121,11 +126,11 @@ export function computeEval(parsed, period, choices = {}) {
   for (const k of Object.keys(total)) total[k] = rows['코드매출'][k] + rows['외부유통매출'][k];
   const pending = giftList.filter(g => g.pick === 'none').length;
   const ratesMissing = expectRows.filter(e => e.amount == null);
-  return { rows, total, expectRows, expectHold, ratesMissing: ratesMissing.map(e => `${e.carrier} ${e.type} ${e.cnt}건`), giftList, giftPending: pending, partnerPaidDone };
+  return { rows, total, expectRows, expectHold, ratesMissing: ratesMissing.map(e => `${e.carrier} ${e.type} ${e.cnt}건`), giftList, giftPending: pending, partnerPaidDone, paidAuto };
 }
 
 /** 저장용 (고객명 등 개인정보 없이 숫자만) */
 export function evalForSave(ev) {
   return { rows: ev.rows, total: ev.total, expectRows: ev.expectRows, expectHold: ev.expectHold, ratesMissing: ev.ratesMissing,
-    gift: { checked: ev.giftList.length, pending: ev.giftPending, picks: ev.giftList.reduce((a, g) => (a[g.pick] = (a[g.pick] || 0) + 1, a), {}) } };
+    paidAuto: ev.paidAuto, gift: { checked: ev.giftList.length, pending: ev.giftPending, picks: ev.giftList.reduce((a, g) => (a[g.pick] = (a[g.pick] || 0) + 1, a), {}) } };
 }
