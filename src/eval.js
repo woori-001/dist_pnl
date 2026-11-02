@@ -1,14 +1,14 @@
 // 평가손익(경영지원 '배분 전·배분 후 손익') 유통사업부 입력값 — 코드매출 / 외부유통매출
 //  공통: 코드 = 숫자로 시작하는 상부(0.기타 제외), 외부유통 = 그 외. 협력점이 자점인 건은 제외(사은품·기대관리만 자점 포함)
 //  월 기준은 계산기와 같음: 일반 = 개통일, 추가·환수 = 정산예정일, 옛날 데이터 포함
-import { RULES } from './rules.js?v=202611021527';
-import { segmentOf, isJajeom, itemOf, isDroppedNoDue } from './calc.js?v=202611021527';
+import { RULES } from './rules.js?v=202611021544';
+import { segmentOf, isJajeom, itemOf, isDroppedNoDue } from './calc.js?v=202611021544';
 
 export const EVAL_ROWS = ['코드매출', '외부유통매출'];
 export const EVAL_COLS = [
-  ['issue', '발생수수료', '상부정산 일반·추가 정산금액(관리수수료 제외, 정산관련 포함) + 기대관리'],
+  ['issue', '발생수수료', '상부정산 일반·추가 정산금액(관리수수료 제외, 정산관련 포함) + 기대관리 — 기대관리가 이미 들어 있어요'],
   ['expect', '기대관리(참고)', '건수 × 월 단가 × 28개월 · 발생수수료에 포함됨'],
-  ['mgmt', '관리수수료', "상부정산 일반·추가 중 상품명 '_관리' · SKY·SKB·SK매직 상부만"],
+  ['mgmt', '관리수수료', "상부정산 일반·추가 중 상품명 '_관리' · SKY·SKB·SK매직 상부만 · 영업손익에서 차감(기대관리와 중복)"],
   ['refundUp', '환수(차감)', '상부정산 환수 — 우리에게 내려온 것'],
   ['refundDn', '환수(대체)', '전체정산 환수 — 우리가 하부점에 내린 것'],
   ['gift', '사은품', '전체정산 일반 · 현금(차감↔지급 확인)+물류+쿠폰 · 자점 포함'],
@@ -116,9 +116,10 @@ export function computeEval(parsed, period, choices = {}) {
     const t = rows[k];
     t.gift = t.giftCash + t.giftGoods + t.giftCoupon;
     t.issue = t.issueBase + t.expect;
-    // 손익 (같은 기준): 상부 받은 돈 B = 발생수수료(기대관리 포함) + 관리수수료 − 환수(차감)
-    //                  전체 나간 돈 A = 협력점정산 − 환수(대체) · 매출 = B − A − 사은품
-    t.B = t.issue + t.mgmt - t.refundUp;
+    // 손익 (경영지원 평가손익과 같은 식): 상부 B = 발생수수료(기대관리 포함) − 관리수수료 − 환수(차감)
+    //   관리수수료는 기대관리(앞으로 받을 관리수수료)와 중복이라 차감 (2026-11-02)
+    //   전체 A = 협력점정산 − 환수(대체) · 매출(영업손익) = B − A − 사은품
+    t.B = t.issue - t.mgmt - t.refundUp;
     t.A = t.partner - t.refundDn;
     t.REV = t.B - t.A - t.gift;
   }

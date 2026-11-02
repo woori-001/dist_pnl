@@ -1,8 +1,8 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=202611021527';
-import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js?v=202611021527';
-import { parseWorkbook, compute, summarize, byUpper } from './calc.js?v=202611021527';
-import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js?v=202611021527';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=202611021544';
+import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js?v=202611021544';
+import { parseWorkbook, compute, summarize, byUpper } from './calc.js?v=202611021544';
+import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js?v=202611021544';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);
@@ -317,9 +317,9 @@ function renderEvalDetail(ev, title) {
       <span class="sp"><span>상부정산</span><span>${n(x.B)}</span></span><span class="sp"><span>전체정산</span><span>${n(-x.A)}</span></span><span class="sp"><span>사은품</span><span>${n(-x.gift)}</span></span></button>`; };
   const left = `<div class="kpi-grp on"><div class="kpi-top"><div class="kpi-label">유통사업부</div></div>
       <div class="kpi-value">${n(tot.REV)}<small>원</small></div><div class="kpi-subs">${SHOW_VIEWS.map(sub).join('')}</div>
-      <div class="kpi-note">매출 = 상부정산 − 전체정산 − 사은품</div></div>`;
+      <div class="kpi-note">영업손익 = 상부정산 − 전체정산 − 사은품<br>(관리수수료는 기대관리와 중복이라 차감)</div></div>`;
   const rows = [
-    ['수수료', '일반', t.upGen, t.dnGen], ['', '관리', t.mgmt, t.dnMgmt], ['', '정산관련', t.upSettle, t.dnSettle], ['', '기대관리', t.expect, 0],
+    ['수수료', '일반', t.upGen, t.dnGen], ['', '정산관련', t.upSettle, t.dnSettle], ['', '기대관리', t.expect, 0], ['', '관리 (차감)', -t.mgmt, t.dnMgmt],
     ['차감', '사은품 현금', 0, -t.dedCash], ['', '물류', 0, -t.dedGoods], ['', '쿠폰', 0, -t.dedCoupon],
   ];
   const span = { '수수료': 4, '차감': 3 };
@@ -328,7 +328,7 @@ function renderEvalDetail(ev, title) {
     + `<tr><th class="grp" colspan="2">사은품 (직접 지급)</th><td class="n">-</td><td class="n">${won(t.gift)}</td><td class="n diff">${won(-t.gift)}</td></tr>`
     + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B)}</td><td class="n">${won(t.A + t.gift)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
   return `<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${left}</div>
-    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · 유통사업부 ${detailSeg}</h2><p>위 평가손익 입력값과 같은 기준 · 상부 합계 = 발생수수료 + 관리수수료 − 환수(차감) · 전체 합계 = 협력점정산 − 환수(대체) + 사은품</p></div></div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · 유통사업부 ${detailSeg}</h2><p>위 평가손익 입력값과 같은 기준 · 상부 합계 = 발생수수료 − 관리수수료 − 환수(차감) · 전체 합계 = 협력점정산 − 환수(대체) + 사은품 · 합계 = 경영지원 영업손익</p></div></div>
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>
     <p class="muted small" style="margin:0">협력점이 자점인 건은 빼고(0.영업정산은 포함) · 사은품(직접 지급)은 자점 포함 · 사은품 차감은 협력점정산에서 이미 빠진 금액이에요</p></div></div>`;
 }
@@ -342,7 +342,7 @@ const PICK = [['ded', '차감 금액'], ['paid', '지급 금액'], ['none', '넣
 function renderEval(ev, title, live) {
   const n = v => v == null ? '-' : Math.round(v).toLocaleString('ko-KR');
   const cell = v => `<td class="n"><button type="button" class="copy-n" data-copy="${Math.round(v || 0)}" title="눌러서 복사">${won(v)}</button></td>`;
-  const head = EVAL_COLS.map(c => `<th class="n${c[0] === 'expect' ? ' ref' : ''}" title="${esc(c[2])}">${c[1]}</th>`).join('');
+  const head = EVAL_COLS.map(c => `<th class="n${c[0] === 'expect' ? ' ref' : ''}" title="${esc(c[2])}">${c[1]}${c[0] === 'expect' ? '<small class="th-sub">발생수수료에 포함</small>' : ''}</th>`).join('');
   const row = (lab, t, cls = '') => `<tr class="${cls}"><th>${lab}</th>${EVAL_COLS.map(c => c[0] === 'expect' ? `<td class="n ref">${won(t[c[0]])}</td>` : cell(t[c[0]])).join('')}</tr>`;
   const notes = [];
   if (ev.ratesMissing && ev.ratesMissing.length) notes.push(`기대관리 단가 확인 중 — ${ev.ratesMissing.join(', ')} (금액 0으로 계산, 단가가 정해지면 rules.js에 넣으면 돼요)`);
@@ -353,7 +353,7 @@ function renderEval(ev, title, live) {
   return `<div class="panel ev-panel"><div class="panel-head"><div><h2>${esc(title)} · 평가손익 입력값 <span class="pill">유통사업부</span></h2><p>경영지원 '배분 전·배분 후 손익'의 유통사업부 › 코드매출 / 외부유통매출 칸에 넣을 숫자예요 · 숫자를 누르면 복사돼요</p></div></div>
     ${notes.length ? `<div class="warns">${notes.map(x => `<div class="notice warn">⚠ ${esc(x)}</div>`).join('')}</div>` : ''}
     <div class="tbl-wrap"><table class="grid ev-tbl"><tr><th>구분</th>${head}</tr>${EVAL_ROWS.map(k => row(k, ev.rows[k])).join('')}${row('유통사업부 합계', ev.total, 'total')}</table></div>
-    <p class="muted small" style="margin:0">협력점이 자점인 건은 빼고(0.영업정산은 포함), 사은품과 기대관리만 자점을 포함해요 · 발생수수료 = 상부정산 일반·추가(관리수수료 제외, 정산관련 포함) + 기대관리 · 사은품 = 현금+물류+쿠폰(일반 건, 유치자지급 제외)</p>
+    <p class="muted small" style="margin:0">협력점이 자점인 건은 빼고(0.영업정산은 포함), 사은품과 기대관리만 자점을 포함해요 · 발생수수료 = 상부정산 일반·추가(관리수수료 제외, 정산관련 포함) + 기대관리 <b>(기대관리가 이미 들어 있어요 — 따로 더하지 마세요)</b> · 관리수수료는 영업손익에서 차감 · 사은품 = 현금+물류+쿠폰(일반 건, 유치자지급 제외)</p>
     <details class="ev-more"><summary><b>기대관리 내역</b><span class="muted small"> · 상부정산 코드 · 일반 · 해지 제외 · 자점 포함 · 건수 × 월 단가 × ${RULES.expectMonths}개월</span></summary>
       <div class="tbl-wrap"><table class="grid"><tr><th>통신사</th><th>유형</th><th class="n">건수</th><th class="n">월 단가</th><th class="n">개월</th><th class="n">기대관리</th></tr>${exp || '<tr><td colspan="6" class="muted">해당 없음</td></tr>'}</table></div></details>
   </div>`;
