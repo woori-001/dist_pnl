@@ -15,7 +15,9 @@ export const EVAL_COLS = [
   ['partner', '협력점정산', '전체정산 일반·추가 정산금액(사은품 차감 후)'],
 ];
 const segName = up => up === '코드' ? '코드매출' : '외부유통매출';
-const blank = () => ({ issue: 0, issueBase: 0, expect: 0, mgmt: 0, refundUp: 0, refundDn: 0, gift: 0, giftCash: 0, giftGoods: 0, giftCoupon: 0, partner: 0 });
+const blank = () => ({ issue: 0, issueBase: 0, expect: 0, mgmt: 0, refundUp: 0, refundDn: 0, gift: 0, giftCash: 0, giftGoods: 0, giftCoupon: 0, partner: 0,
+  // 상세 표용 (같은 기준으로 나눈 것) — 상부: 일반/정산관련 · 전체: 사은품 차감 전 수수료와 차감된 사은품
+  upGen: 0, upSettle: 0, dnGen: 0, dnMgmt: 0, dnSettle: 0, dedCash: 0, dedGoods: 0, dedCoupon: 0 });
 
 /** 기대관리 분류: 상품명 → { carrier, type } 또는 { hold } / null */
 export function expectKind(product) {
@@ -58,7 +60,10 @@ export function computeEval(parsed, period, choices = {}) {
     const t = rows[segName(up)], item = itemOf(r);
     if (f.side === '상부') {
       if (r.kind === '환수') { if (!jj) t.refundUp += -r.amount; continue; }
-      if (!jj) { if (item === '관리수수료') t.mgmt += r.amount; else t.issueBase += r.amount; }
+      if (!jj) {
+        if (item === '관리수수료') t.mgmt += r.amount;
+        else { t.issueBase += r.amount; if (item === '정산관련') t.upSettle += r.amount; else t.upGen += r.amount; }
+      }
       // 기대관리: 코드 · 일반 · 해지 제외 · 자점 포함
       if (up === '코드' && r.kind === '일반' && !(r.status || '').includes('해지')) {
         const k = expectKind(r.product);
@@ -67,7 +72,12 @@ export function computeEval(parsed, period, choices = {}) {
       }
     } else {
       if (r.kind === '환수') { if (!jj) t.refundDn += -r.amount; continue; }
-      if (!jj) t.partner += r.amount;
+      if (!jj) {
+        t.partner += r.amount;
+        const dg = r.d['사은품'] + r.d['물류'] + r.d['쿠폰'];
+        t.dedCash += r.d['사은품']; t.dedGoods += r.d['물류']; t.dedCoupon += r.d['쿠폰'];
+        if (item === '관리수수료') t.dnMgmt += r.amount + dg; else if (item === '정산관련') t.dnSettle += r.amount + dg; else t.dnGen += r.amount + dg;
+      }
       // 사은품: 일반 건(개통일 기준) · 자점 포함. 추가 행의 사은품 칸은 원 건의 복사라 쓰지 않음(차감 보정만 확인 목록에)
       if (r.kind === '일반') {
         t.giftGoods += r.d['물류']; t.giftCoupon += r.d['쿠폰'];
@@ -98,8 +108,13 @@ export function computeEval(parsed, period, choices = {}) {
     const t = rows[k];
     t.gift = t.giftCash + t.giftGoods + t.giftCoupon;
     t.issue = t.issueBase + t.expect;
+    // 손익 (같은 기준): 상부 받은 돈 B = 발생수수료(기대관리 포함) + 관리수수료 − 환수(차감)
+    //                  전체 나간 돈 A = 협력점정산 − 환수(대체) · 매출 = B − A − 사은품
+    t.B = t.issue + t.mgmt - t.refundUp;
+    t.A = t.partner - t.refundDn;
+    t.REV = t.B - t.A - t.gift;
   }
-  const total = blank();
+  const total = { ...blank(), B: 0, A: 0, REV: 0 };
   for (const k of Object.keys(total)) total[k] = rows['코드매출'][k] + rows['외부유통매출'][k];
   const pending = giftList.filter(g => g.pick === 'none').length;
   const ratesMissing = expectRows.filter(e => e.amount == null);

@@ -18,7 +18,11 @@ const blankSt = () => Object.fromEntries(STATUS_KEYS.map(k => [k, '가정산']))
 const isLegacyRun = run => !!run && !!run.seg_status && '유통이관' in run.seg_status;
 const segsOf = run => isLegacyRun(run) ? LEGACY_SEGMENTS : STATUS_KEYS; // 상태 단위
 // 상태 단위별 매출: 유통사업부 = 코드매출 + 외부유통매출 (= 유통매출 + 직영영업매출)
-const valOf = (run, k) => k === '유통사업부' ? revOf(run, '코드매출') + revOf(run, '외부유통매출') : revOf(run, k);
+const valOf = (run, k) => {
+  const ev = run.summary && run.summary.eval; // 평가손익 기준으로 저장된 회차면 그 매출
+  if (ev && ev.total && ev.total.REV !== undefined) return k === '유통사업부' ? ev.total.REV : (ev.rows[k] ? ev.rows[k].REV : revOf(run, k));
+  return k === '유통사업부' ? revOf(run, '코드매출') + revOf(run, '외부유통매출') : revOf(run, k);
+};
 const totalOf = run => isLegacyRun(run) ? LEGACY_SEGMENTS.reduce((a, k) => a + revOf(run, k), 0) : valOf(run, '유통사업부');
 
 // ---------- 공통 ----------
@@ -291,7 +295,36 @@ function renderSummary(summary, title, segStatus = blankSt(), opts = {}) {
     <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>${jj}</div></div>`;
 }
 function rerenderSummary() {
-  const v = state.view; $('calcSummary').innerHTML = v ? renderSummary(v.summary, v.title, v.segStatus, { toggles: false }) : '';
+  const v = state.view; if (!v) { $('calcSummary').innerHTML = ''; return; }
+  const ev = v.ev || v.eval;
+  if (ev && ev.rows && ev.rows['코드매출'].B !== undefined) { $('calcSummary').innerHTML = renderEvalDetail(ev, v.title); return; }
+  $('calcSummary').innerHTML = !v.summary ? '' : (v.summary.legacy ? '' : '<div class="notice warn">⚠ 아래 상세 표는 이전 기준(자점 포함)이에요. 이 달을 다시 계산해서 저장하면 위 표와 같은 기준으로 나와요.</div>')
+    + renderSummary(v.summary, v.title, v.segStatus, { toggles: false });
+}
+/** 상세 표 — 위 평가손익 입력값과 같은 기준 (자점 제외 · 0.영업정산 포함 · 사은품은 자점 포함 · 기대관리 포함) */
+function renderEvalDetail(ev, title) {
+  const n = v => Math.round(v || 0).toLocaleString('ko-KR');
+  if (!SHOW_VIEWS.includes(detailSeg)) detailSeg = SHOW_VIEWS[0];
+  const tot = ev.total, t = ev.rows[detailSeg];
+  const sub = k => { const x = ev.rows[k]; return `<button type="button" class="kpi-sub${k === detailSeg ? ' hot' : ''}" data-seg="${k}" role="tab" aria-selected="${k === detailSeg}">
+      <span class="sh"><span class="sl">${k}</span><span class="sv">${n(x.REV)}</span></span>
+      <span class="sp"><span>상부정산</span><span>${n(x.B)}</span></span><span class="sp"><span>전체정산</span><span>${n(-x.A)}</span></span><span class="sp"><span>사은품</span><span>${n(-x.gift)}</span></span></button>`; };
+  const left = `<div class="kpi-grp on"><div class="kpi-top"><div class="kpi-label">유통사업부</div></div>
+      <div class="kpi-value">${n(tot.REV)}<small>원</small></div><div class="kpi-subs">${SHOW_VIEWS.map(sub).join('')}</div>
+      <div class="kpi-note">매출 = 상부정산 − 전체정산 − 사은품</div></div>`;
+  const rows = [
+    ['수수료', '일반', t.upGen, t.dnGen], ['', '관리', t.mgmt, t.dnMgmt], ['', '정산관련', t.upSettle, t.dnSettle], ['', '기대관리', t.expect, 0],
+    ['차감', '사은품 현금', 0, -t.dedCash], ['', '물류', 0, -t.dedGoods], ['', '쿠폰', 0, -t.dedCoupon],
+  ];
+  const span = { '수수료': 4, '차감': 3 };
+  const body = rows.map(([g, item, up, dn]) => `<tr>${g ? `<th class="grp" rowspan="${span[g]}">${g}</th>` : ''}<td class="item">${item}</td><td class="n">${won(up)}</td><td class="n">${won(dn)}</td><td class="n diff">${won(up - dn)}</td></tr>`).join('')
+    + `<tr><th class="grp" colspan="2">환수</th><td class="n">${won(-t.refundUp)}</td><td class="n">${won(-t.refundDn)}</td><td class="n diff">${won(-t.refundUp + t.refundDn)}</td></tr>`
+    + `<tr><th class="grp" colspan="2">사은품 (직접 지급)</th><td class="n">-</td><td class="n">${won(t.gift)}</td><td class="n diff">${won(-t.gift)}</td></tr>`
+    + `<tr class="total"><th colspan="2">합계</th><td class="n">${won(t.B)}</td><td class="n">${won(t.A + t.gift)}</td><td class="n rev">${won(t.REV)}</td></tr>`;
+  return `<div class="sum-split"><div class="kpi-col" role="tablist" aria-label="구분 선택">${left}</div>
+    <div class="panel sum-panel"><div class="panel-head"><div><h2>${esc(title)} · 유통사업부 ${detailSeg}</h2><p>위 평가손익 입력값과 같은 기준 · 상부 합계 = 발생수수료 + 관리수수료 − 환수(차감) · 전체 합계 = 협력점정산 − 환수(대체) + 사은품</p></div></div>
+    <div class="tbl-wrap"><table class="cmp-tbl"><thead><tr><th colspan="2">구분 / 항목</th><th class="n">상부정산</th><th class="n">전체정산</th><th class="n">합계(상부−전체)</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="muted small" style="margin:0">협력점이 자점인 건은 빼고(0.영업정산은 포함) · 사은품(직접 지급)은 자점 포함 · 사은품 차감은 협력점정산에서 이미 빠진 금액이에요</p></div></div>`;
 }
 document.addEventListener('click', e => {
   if (!e.target.closest('#calcSummary')) return;
@@ -339,7 +372,7 @@ function renderEvalCalc() {
 function recomputeEval() {
   const r = state.result; if (!r) return;
   const keepOpen = [...$('calcEval').querySelectorAll('details')].map(d => d.open);
-  r.eval = computeEval(state.files, r.period, state.giftChoices); renderEvalCalc(); state.resultSaved = false; renderRail();
+  r.eval = computeEval(state.files, r.period, state.giftChoices); renderEvalCalc(); if (state.view) { state.view.ev = r.eval; rerenderSummary(); } state.resultSaved = false; renderRail();
   [...$('calcEval').querySelectorAll('details')].forEach((d, i) => { if (keepOpen[i] !== undefined) d.open = keepOpen[i]; });
 }
 document.addEventListener('change', e => {
@@ -491,7 +524,7 @@ function refresh() {
   $('uploadTitle').textContent = m === 'upload' ? `${monthLabel(state.period)} · 엑셀로 계산하기` : '계산에 쓴 파일';
   $('uploadSub').textContent = m === 'upload' ? '어드민 가져오기 버튼을 쓰면 자동으로 계산돼요. 엑셀을 직접 받았다면 여기에 올리세요.' : '파일을 빼거나 더 올린 뒤 다시 계산할 수 있어요.';
   if (m === 'calc' && r) {
-    state.view = { summary: r.summary, title: monthLabel(r.period), segStatus: state.segStatus };
+    state.view = { summary: r.summary, title: monthLabel(r.period), segStatus: state.segStatus, ev: r.eval };
     $('calcChecks').innerHTML = r.warn.length ? `<div class="warns">${r.warn.map(w => `<div class="notice warn">⚠ ${esc(w)}</div>`).join('')}</div>` : '';
     renderEvalCalc(); rerenderSummary();
   } else if (m === 'saved' && state.view) {
