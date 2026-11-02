@@ -42,6 +42,7 @@ function show(view) {
   $('bmCard').hidden = view !== 'viewApp' || location.hash.includes('admin-import');
   $('ruleCard').hidden = view !== 'viewApp';
   $('rail').hidden = view !== 'viewApp';
+  $('evalLink').hidden = view !== 'viewApp';
   if (view === 'viewLogin') setTitle('유통 손익매출 계산기', '로그인하면 계산·저장할 수 있어요');
   if (view === 'viewApp') setTitle(...PAGE.calc);
 }
@@ -213,7 +214,7 @@ $('btnSave').onclick = async () => {
     p_files: files, p_summary: { ...r.summary, eval: r.eval ? evalForSave(r.eval) : null }, p_rules: rules, p_lines: r.lines });
   $('btnSave').disabled = false;
   if (error) { toast('저장 실패: ' + error.message); return; }
-  state.resultSaved = true;
+  state.resultSaved = true; state.files = []; renderFiles(); // 저장한 달의 파일은 비워서 다음 달과 섞이지 않게
   toast(`${monthLabel(r.period)} 저장했어요 — 달력에서 이 달을 누르면 다시 볼 수 있어요`);
   await loadRuns(); state.selRun = null; openMonth(r.period);
 };
