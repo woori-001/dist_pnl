@@ -1,8 +1,8 @@
 import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm';
-import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=202611021544';
-import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js?v=202611021544';
-import { parseWorkbook, compute, summarize, byUpper } from './calc.js?v=202611021544';
-import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js?v=202611021544';
+import { SUPABASE_URL, SUPABASE_KEY } from './config.js?v=202611030909';
+import { RULES, SEGMENTS, LEGACY_SEGMENTS, DIST_VIEWS, CODE_VIEWS, STATUS_KEYS, statusKeyOf } from './rules.js?v=202611030909';
+import { parseWorkbook, compute, summarize, byUpper } from './calc.js?v=202611030909';
+import { computeEval, evalForSave, EVAL_COLS, EVAL_ROWS } from './eval.js?v=202611030909';
 
 const sb = createClient(SUPABASE_URL, SUPABASE_KEY);
 const $ = id => document.getElementById(id);

@@ -1,5 +1,5 @@
 // 손익매출 계산 엔진 — 브라우저와 Node 양쪽에서 동작 (XLSX 객체는 밖에서 넘겨받음)
-import { RULES, SEGMENTS, VIEW_FILTER, LEGACY_SEGMENTS, DIST_VIEWS } from './rules.js?v=202611021544';
+import { RULES, SEGMENTS, VIEW_FILTER, LEGACY_SEGMENTS, DIST_VIEWS } from './rules.js?v=202611030909';
 
 const SIDE_BY_SHEET = { '상부정산관리': '상부', '전체정산관리': '전체' };
 const NEED = ['정산종류', '협력점', '상부점', '상품명', '개통일', '정산예정일', '정산금액',
